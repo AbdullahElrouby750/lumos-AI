@@ -6,7 +6,7 @@ import time
 import speech_recognition as sr
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 55555
+DEFAULT_PORT = 65432
 
 
 def send_payload(sock, host, port, phrase):

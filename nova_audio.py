@@ -49,6 +49,21 @@ class VoiceQueue:
         except queue.Full:
             print(f"Voice queue is full. Discarding: {text}")
 
+    def clear_non_danger_queue(self):
+        """
+        Clear all pending messages except those with PRIORITY_DANGER.
+        Used for voice barge-in.
+        """
+        temp_queue = queue.PriorityQueue()
+        while not self.queue.empty():
+            try:
+                priority, timestamp, text = self.queue.get_nowait()
+                if priority == self.PRIORITY_DANGER:
+                    temp_queue.put((priority, timestamp, text))
+            except queue.Empty:
+                break
+        self.queue = temp_queue
+
     def _worker(self):
         """
         Background worker thread. 

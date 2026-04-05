@@ -198,3 +198,54 @@ def is_bbox_expanding(bbox_current, bbox_previous, threshold=20):
     if bbox_previous is None:
         return False
     return (bbox_current.width - bbox_previous.width) > threshold
+
+
+def process_command(command, enrollment_manager, voice_queue, quit_flag):
+    """Process a command from the queue."""
+    from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
+    from nove_forget import forget_person, get_names_from_PK
+    import time
+    
+    intent = command.get("intent")
+    target_name = command.get("target_name")
+
+    if intent == INTENT_ENROLL:
+        if not target_name:
+            voice_queue.speak("Please say the name to enroll.", voice_queue.PRIORITY_WARNING)
+            return
+        if enrollment_manager.active:
+            voice_queue.speak("Enrollment is already in progress.", voice_queue.PRIORITY_WARNING)
+            return
+        enrollment_manager.start(target_name, time.time())
+        return
+
+    if intent == INTENT_FORGET:
+        if not target_name:
+            voice_queue.speak("Please say the name to forget.", voice_queue.PRIORITY_WARNING)
+            return
+
+        names_stored = get_names_from_PK()
+        if not names_stored:
+            voice_queue.speak("No stored people found.", voice_queue.PRIORITY_WARNING)
+            return
+
+        result = forget_person(target_name, names_stored)
+        voice_queue.speak(result, voice_queue.PRIORITY_WARNING)
+        return
+
+    if intent == INTENT_QUIT:
+        quit_flag[0] = True
+        return
+
+    # Ignore INTENT_NONE
+
+
+def handle_manual_input(intent_type, command_queue):
+    """Handle manual terminal input in a daemon thread."""
+    try:
+        name = input("Enter name: ").strip()
+        if name:
+            command = {"intent": intent_type, "target_name": name}
+            command_queue.put(command)
+    except Exception as e:
+        print(f"Manual input error: {e}")

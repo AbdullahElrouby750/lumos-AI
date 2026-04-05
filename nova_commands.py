@@ -3,9 +3,11 @@ import re
 INTENT_NONE = "INTENT_NONE"
 INTENT_ENROLL = "INTENT_ENROLL"
 INTENT_FORGET = "INTENT_FORGET"
+INTENT_QUIT = "INTENT_QUIT"
 
 ENROLL_KEYWORDS = ["enroll", "add", "remember", "register", "save"]
 FORGET_KEYWORDS = ["delete", "remove", "forget", "clear"]
+QUIT_KEYWORDS = ["quit", "exit", "stop", "close", "shutdown"]
 IGNORE_WORDS = {
     "hey", "lumo", "lumos", "please", "the", "a", "an", "to", "of", "me", "my", "can", "you"
 }
@@ -28,7 +30,7 @@ def _extract_name(raw_text, keyword):
 
     # Fallback: use the last non-keyword words after removing command words
     lower_text = raw_text.lower()
-    for word in ENROLL_KEYWORDS + FORGET_KEYWORDS:
+    for word in ENROLL_KEYWORDS + FORGET_KEYWORDS + QUIT_KEYWORDS:
         lower_text = lower_text.replace(word, " ")
     tokens = [token for token in re.split(r"\s+", lower_text) if token and token.lower() not in IGNORE_WORDS]
     if not tokens:
@@ -43,6 +45,10 @@ def parse_intent(raw_text):
 
     text = raw_text.strip()
     lower_text = text.lower()
+
+    for keyword in QUIT_KEYWORDS:
+        if keyword in lower_text:
+            return {"intent": INTENT_QUIT, "target_name": None}
 
     for keyword in FORGET_KEYWORDS:
         if keyword in lower_text:
