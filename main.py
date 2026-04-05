@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import time
 from nova_face_detector import FaceDetector
+from nova_audio import VoiceQueue
 from utils import draw_bounding_box, draw_text, calculate_fps
 
 def main():
@@ -10,10 +11,16 @@ def main():
     Initializes camera, runs detection loop, orchestrates modules.
     Ensures main loop stays above 30 FPS.
     """
+    # Initialize VoiceQueue
+    voice_queue = VoiceQueue()
+    voice_queue.speak("Lumos starting", VoiceQueue.PRIORITY_INFO)
+
     # Initialize FaceDetector
     detector = FaceDetector()
     if detector.detector is None:
         print("Failed to initialize FaceDetector. Exiting.")
+        voice_queue.speak("Face detector failed", VoiceQueue.PRIORITY_DANGER)
+        voice_queue.stop()
         return
 
     # Initialize camera with graceful failure
@@ -23,7 +30,9 @@ def main():
             raise Exception("Camera not accessible")
     except Exception as e:
         print(f"Error opening camera: {e}")
+        voice_queue.speak("Camera error", VoiceQueue.PRIORITY_DANGER)
         detector.close()
+        voice_queue.stop()
         return
 
     last_time = 0
@@ -64,10 +73,20 @@ def main():
     except Exception as e:
         print(f"Error in main loop: {e}")
     finally:
-        # Cleanup
+        # Cleanup hardware
         cap.release()
         cv2.destroyAllWindows()
         detector.close()
+        
+        # Send the final message
+        voice_queue.speak("Lumos shutting down", VoiceQueue.PRIORITY_INFO)
+        
+        # SMART WAIT: Don't stop the thread if there are still messages waiting in line!
+        while voice_queue.get_queue_size() > 0:
+            time.sleep(0.5)
+            
+        time.sleep(2) # Give the TTS engine 2 seconds to physically speak the final words
+        voice_queue.stop()
 
 if __name__ == "__main__":
     main()
