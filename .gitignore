@@ -1,0 +1,25 @@
+# Python Cache
+__pycache__/
+*.pyc
+
+# Virtual Environments
+venv/
+env/
+
+# YOLO & Deep Learning Models (These are huge, don't push them)
+*.pt
+yolov8n.pt
+# Note: blaze_face_short_range.tflite is tiny, so you can leave it out of this file and let it push.
+
+# Lumos Local Databases & User State
+face_db/
+nova_brain.pkl
+
+# Images and YOLO output runs
+runs/
+*.jpg
+*.png
+*.jpeg
+
+# Secrets and Environment Variables
+.env
