@@ -23,3 +23,5 @@ runs/
 
 # Secrets and Environment Variables
 .env
+
+.md
