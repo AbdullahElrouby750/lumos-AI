@@ -48,6 +48,48 @@ class FaceRecognizer:
         except Exception as e:
             print(f"Error loading Facenet model: {e}")
 
+    def recognize_face_crop(self, face_crop):
+        """
+        Recognize a single face from a cropped image.
+        Used for async recognition in background threads.
+        
+        Args:
+            face_crop: Cropped face image (numpy array)
+        
+        Returns:
+            name (str): Recognized person's name or "Unknown"
+        """
+        try:
+            # Prepare the face for Facenet512
+            face_resize = cv2.resize(face_crop, (160, 160))
+            face_array = np.expand_dims(face_resize, axis=0)
+            face_array = face_array / 255.0  # Normalize
+
+            # Get embedding
+            current_embedding = self.facenet_model.model.predict(face_array, verbose=0)[0]
+
+            # Find best match in the brain
+            best_match = "Unknown"
+            min_dist = 0.6  # Preserved threshold
+
+            for name, embeddings in self.known_faces.items():
+                for db_emb in embeddings:
+                    # Cosine distance calculation
+                    a = np.matmul(current_embedding, db_emb)
+                    b = np.sum(np.multiply(current_embedding, current_embedding))
+                    c = np.sum(np.multiply(db_emb, db_emb))
+                    dist = 1 - (a / (np.sqrt(b) * np.sqrt(c)))
+
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_match = name
+
+            return best_match
+
+        except Exception as e:
+            print(f"Face crop recognition error: {e}")
+            return "Unknown"
+
     def recognize(self, frame, detection_result):
         """
         Recognize faces in the frame based on detections.
