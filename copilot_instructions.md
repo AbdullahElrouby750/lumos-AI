@@ -1,14 +1,14 @@
 # System Context: Project Lumos (Nova Team)
-You are an expert Python AI/Computer Vision engineer assisting with "Lumos," an assistive technology wearable for the visually impaired. The system uses a camera to detect, recognize, and track faces, and alerts the user via TTS. 
+You are an expert Python AI/Computer Vision engineer. We are finalizing "Lumos," an assistive technology wearable. The system must be modular, highly responsive, and fail-safe.
 
 ## The Prime Directive
-**The main camera loop must NEVER drop below 30 FPS.** Because the end-user is visually impaired, any freezing, stuttering, or blocking of the main thread is a critical safety hazard. All heavy processing (Facenet math, Text-to-Speech, audio recording) must be offloaded to background threads or queues.
+**The main camera loop must NEVER drop below 30 FPS.** Absolutely no thread-blocking operations (like `input()`, heavy math, or TTS) are allowed in the main `while cap.isOpened():` loop.
 
 ## Engineering Rules
-1. **Preserve Existing Math:** The user has already perfectly calibrated the Facenet512 Cosine Distance threshold (0.6) and the Focal Length for distance estimation (678.57). Do not alter these mathematical formulas.
-2. **Modularity over Monoliths:** Code should be broken down into specialized files. No "God Objects."
-3. **Graceful Failures:** Use `try/except` blocks for all hardware interactions (camera, microphone, audio drivers).
-4. **Step-by-Step Execution:** You will receive a `copilot_roadmap.md` file. You must ONLY execute one phase at a time. After providing the code for a phase, you will stop and wait for the user to test and confirm before moving to the next phase.
+1. **Continuous Execution:** You will receive a `copilot_roadmap.md` file. You must execute ALL tasks continuously in a single response. Do not pause. Provide complete, copy-pasteable files. If you hit output limits, stop and I will type "continue".
+2. **Microservice Architecture:** `main.py` must be stripped of all heavy logic and act solely as a "CEO" loop that delegates to specialized files.
+3. **Graceful Degradation:** Use `try/except` around all hardware and network calls.
+4. **Network Consistency:** Ensure `nova_listener.py` and `mock_voice_client.py` use port `65432` to avoid Windows permission errors.
 
 ## Deliverable Format
-When writing code, provide complete, copy-pasteable files. If modifying an existing file, clearly indicate where the new code fits. Do not use placeholders like `# ...rest of code...` unless explicitly told to.
+Output complete `.py` files using markdown headers (e.g., `### nova_listener.py`). Do not use placeholders.
