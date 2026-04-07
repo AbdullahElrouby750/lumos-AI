@@ -41,7 +41,7 @@ def build_nova_brain(name = "Person"):
                 
                 # 'represent' returns a list of dictionaries (one for each face in image)
                 # We use 'Facenet512' for high accuracy
-                results = DeepFace.represent(img_path=img_path, model_name="Facenet512", enforce_detection=False, max_faces=1)
+                results = DeepFace.represent(img_path=img_path, model_name="Facenet512", enforce_detection=False, max_faces=1, align=True)
                 
                 if name not in known_faces:
                     known_faces[name] = []

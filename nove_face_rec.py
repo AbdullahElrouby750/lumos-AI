@@ -50,31 +50,31 @@ class FaceRecognizer:
 
     def recognize_face_crop(self, face_crop):
         """
-        Recognize a single face from a cropped image.
-        Used for async recognition in background threads.
-        
-        Args:
-            face_crop: Cropped face image (numpy array)
-        
-        Returns:
-            name (str): Recognized person's name or "Unknown"
+        Takes a raw crop, ALIGNS IT mathematically, extracts the embedding,
+        and compares it against the database. Heavy, but highly accurate.
         """
+        if not self.known_faces:
+            return "Unknown"
+
         try:
-            # Prepare the face for Facenet512
-            face_resize = cv2.resize(face_crop, (160, 160))
-            face_array = np.expand_dims(face_resize, axis=0)
-            face_array = face_array / 255.0  # Normalize
+            # THE RIGHT WAY: Let DeepFace handle the alignment and extraction on the live crop
+            # enforce_detection=False because we already know it's a face crop
+            results = DeepFace.represent(
+                img_path=face_crop, 
+                model_name="Facenet512", 
+                enforce_detection=False, 
+                align=True
+            )
+            
+            current_embedding = results[0]["embedding"]
 
-            # Get embedding
-            current_embedding = self.facenet_model.model.predict(face_array, verbose=0)[0]
-
-            # Find best match in the brain
+            # Compare against the database
             best_match = "Unknown"
-            min_dist = 0.6  # Preserved threshold
+            min_dist = 0.4  # Stricter threshold because our data is cleaner now!
 
             for name, embeddings in self.known_faces.items():
                 for db_emb in embeddings:
-                    # Cosine distance calculation
+                    # Cosine distance math
                     a = np.matmul(current_embedding, db_emb)
                     b = np.sum(np.multiply(current_embedding, current_embedding))
                     c = np.sum(np.multiply(db_emb, db_emb))
@@ -87,7 +87,7 @@ class FaceRecognizer:
             return best_match
 
         except Exception as e:
-            print(f"Face crop recognition error: {e}")
+            print(f"Alignment/Recognition error in engine: {e}")
             return "Unknown"
 
     def recognize(self, frame, detection_result):

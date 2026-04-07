@@ -1,9 +1,10 @@
 import threading
 import time
-
+import cv2
+import mediapipe as mp
 from nova_face_detector import FaceDetector
 from nove_face_rec import FaceRecognizer
-from utils import CentroidTracker, is_in_collision_zone, is_bbox_expanding
+from utils import CentroidTracker, is_in_collision_zone, is_bbox_expanding, draw_bounding_box, draw_text
 
 class VisionPipeline:
     """Handles vision processing: detection, tracking, async recognition, and alerts."""
@@ -15,6 +16,7 @@ class VisionPipeline:
         self.tracker = CentroidTracker(max_distance=200, max_disappeared=60)
         self.recognition_threads = {}
         self.recognition_results = {}
+        self.temporal_votes = {} # NEW: {face_id: [guess1, guess2, guess3]}
         self.recognized_ids = set()
         self.previous_bboxes = {}
         self.alerted_approaching_ids = set()
@@ -23,9 +25,7 @@ class VisionPipeline:
 
     def process_frame(self, frame, current_time):
         """Process a single frame: detect, track, recognize, alert."""
-        import cv2
-        import mediapipe as mp
-        from utils import draw_bounding_box, draw_text
+
 
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         detection_result = self.detector.detect(mp_image)
@@ -49,22 +49,45 @@ class VisionPipeline:
 
             if y_end > y_start and x_end > x_start:
                 face_crop = frame[y_start:y_end, x_start:x_end].copy()
+                # Only spawn a new thread if we haven't locked in a final result
+                # AND if there isn't already a thread actively working on this face ID
                 if face_id not in self.recognition_results and face_id not in self.recognition_threads:
+                    
                     def recognize_worker(fid, crop):
                         try:
+                            # 1. Get the heavy alignment guess
                             name = self.recognizer.recognize_face_crop(crop)
-                            self.recognition_results[fid] = name
+                            
+                            # 2. Initialize the vote list if empty
+                            if fid not in self.temporal_votes:
+                                self.temporal_votes[fid] = []
+                            
+                            # 3. Append the new guess
+                            self.temporal_votes[fid].append(name)
+                            
+                            # 4. THE CONSENSUS GATE: Check if we have 3 votes yet
+                            if len(self.temporal_votes[fid]) >= 3:
+                                votes = self.temporal_votes[fid][-3:]
+                                final_name = max(set(votes), key=votes.count)
+                                # Lock in the final result!
+                                self.recognition_results[fid] = final_name
+                                
                         except Exception as e:
                             print(f"Recognition thread error: {e}")
-                            self.recognition_results[fid] = "Unknown"
+                            # Don't lock in "Unknown" on an error, let it try again on the next frame
+                        finally:
+                            # IMPORTANT: Clear the thread lock so the main loop can spawn 
+                            # another thread for the next vote if we haven't reached 3 votes yet
+                            self.recognition_threads.pop(fid, None)
 
+                    # Spawn the thread and lock it so we don't spawn 30 threads in one second
                     thread = threading.Thread(
                         target=recognize_worker,
                         args=(face_id, face_crop),
                         daemon=True
                     )
-                    thread.start()
                     self.recognition_threads[face_id] = thread
+                    thread.start()
 
             if face_id in self.recognition_results:
                 name = self.recognition_results[face_id]
@@ -86,7 +109,7 @@ class VisionPipeline:
                             if face_id not in self.alerted_approaching_ids:
                                 self.voice_queue.speak(
                                     f"{name} approaching",
-                                    self.voice_queue.PRIORITY_DANGER
+                                    self.voice_queue.PRIORITY_WARNING
                                 )
                                 self.alerted_approaching_ids.add(face_id)
                     else:
@@ -111,6 +134,7 @@ class VisionPipeline:
                 self.previous_bboxes.pop(fid, None)
                 self.recognition_results.pop(fid, None)
                 self.recognition_threads.pop(fid, None)
+                self.temporal_votes.pop(fid, None)
                 self.alerted_approaching_ids.discard(fid)
 
         # Draw collision zone lines
