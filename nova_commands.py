@@ -1,4 +1,5 @@
 import re
+import difflib
 
 INTENT_NONE = "INTENT_NONE"
 INTENT_ENROLL = "INTENT_ENROLL"
@@ -7,6 +8,9 @@ INTENT_QUIT = "INTENT_QUIT"
 INTENT_CANCEL = "INTENT_CANCEL"
 INTENT_CONFIRM = "INTENT_CONFIRM"
 INTENT_DENY = "INTENT_DENY"
+
+# The Wake Word Dictionary (includes common STT misspellings)
+WAKE_WORDS = ["lumo", "luma", "lumos", "loomo", "lumus", "lama", "lima", "lomo", "roomo", "ruma"]
 
 ENROLL_KEYWORDS = ["enroll", "add", "remember", "register", "save"]
 FORGET_KEYWORDS = ["delete", "remove", "forget", "clear"]
@@ -18,6 +22,17 @@ IGNORE_WORDS = {
     "hey", "lumo", "lumos", "please", "the", "a", "an", "to", "of", "me", "my", "can", "you"
 }
 
+def _contains_wake_word(text):
+    """Checks if the wake word or a close spelling is in the text."""
+    words = re.findall(r'\b\w+\b', text.lower())
+    for word in words:
+        # Exact match
+        if word in WAKE_WORDS:
+            return True
+        # Fuzzy match (catches minor spelling errors from the microphone)
+        if difflib.get_close_matches(word, WAKE_WORDS, n=1, cutoff=0.75):
+            return True
+    return False
 
 def _clean_name(name_text):
     name_text = name_text.strip()
@@ -51,6 +66,11 @@ def parse_intent(raw_text):
 
     text = raw_text.strip()
     lower_text = text.lower()
+
+# --- THE WAKE WORD GATE ---
+    # If the wake word is not detected, ignore the audio completely.
+    if not _contains_wake_word(lower_text):
+        return {"intent": INTENT_NONE, "target_name": None}
 
     for keyword in QUIT_KEYWORDS:
         if keyword in lower_text:
