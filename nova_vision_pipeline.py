@@ -101,39 +101,35 @@ class VisionPipeline:
                         )
                         self.name_cooldowns[name] = current_time
                     self.recognized_ids.add(face_id)
-                    self.alerted_approaching_ids.discard(face_id)
+                    self.alerted_approaching_ids.pop(face_id, None)
 
                 if name != "Unknown" and face_id in self.recognized_ids:
+                    # 1. ALWAYS update the Jitter Buffer for recognized faces
+                    if face_id not in self.bbox_history_buffer:
+                        self.bbox_history_buffer[face_id] = []
+                    self.bbox_history_buffer[face_id].append(bbox)
+
+                    # Keep only the last 5 frames for the moving average
+                    if len(self.bbox_history_buffer[face_id]) > 5:
+                        self.bbox_history_buffer[face_id].pop(0)
+
+                    # 2. Check the Collision Zone & Cooldown
                     if is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
-                        prev_bbox = self.previous_bboxes.get(face_id)
-                        if is_bbox_expanding(bbox, prev_bbox, threshold=10):
-                            # 1. Update the Jitter Buffer
-                            if face_id not in self.bbox_history_buffer:
-                                self.bbox_history_buffer[face_id] = []
-                            self.bbox_history_buffer[face_id].append(bbox)
+                        # Get the last time we warned about this person (default to 0)
+                        last_alert_time = self.alerted_approaching_ids.get(face_id, 0)
 
-                            # Keep only the last 5 frames for the moving average
-                            if len(self.bbox_history_buffer[face_id]) > 5:
-                                self.bbox_history_buffer[face_id].pop(0)
-
-                            # 2. Check the Collision Zone & Cooldown
-                            if name != "Unknown":
-                                if is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
-                                    # Get the last time we warned about this person (default to 0)
-                                    last_alert_time = self.alerted_approaching_ids.get(face_id, 0)
-
-                                    # 5-SECOND LOCK: Only calculate expansion if 5 seconds have passed
-                                    if current_time - last_alert_time > 5.0:
-                                        if is_bbox_expanding(bbox, self.bbox_history_buffer[face_id], threshold=5):
-                                            # FIRE WARNING!
-                                            self.voice_queue.speak(f"{name} approaching", self.voice_queue.PRIORITY_WARNING)
-                                            # Lock it with the current timestamp!
-                                            self.alerted_approaching_ids[face_id] = current_time 
-                                else:
-                                    # If they leave the collision zone, instantly remove the lock
-                                    self.alerted_approaching_ids.pop(face_id, None)
+                        # 5-SECOND LOCK: Only calculate expansion if 5 seconds have passed
+                        if current_time - last_alert_time > 5.0:
+                            if is_bbox_expanding(bbox, self.bbox_history_buffer[face_id], threshold=5):
+                                # FIRE WARNING!
+                                self.voice_queue.speak(f"{name} approaching", self.voice_queue.PRIORITY_WARNING)
+                                # Lock it with the current timestamp!
+                                self.alerted_approaching_ids[face_id] = current_time 
                     else:
-                        self.alerted_approaching_ids.discard(face_id)
+                        # If they leave the collision zone, instantly remove the lock
+                        self.alerted_approaching_ids.pop(face_id, None)
+                else:
+                    self.alerted_approaching_ids.pop(face_id, None)
 
                 if name != "Unknown":
                     color = (0, 255, 0)

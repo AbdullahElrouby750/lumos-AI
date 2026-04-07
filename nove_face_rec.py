@@ -90,56 +90,6 @@ class FaceRecognizer:
             print(f"Alignment/Recognition error in engine: {e}")
             return "Unknown"
 
-    def recognize(self, frame, detection_result):
-        """
-        Recognize faces in the frame based on detections.
-        Returns a list of tuples: (bbox, name, distance_m)
-        """
-        results = []
-        if not detection_result or not detection_result.detections:
-            return results
-
-        for detection in detection_result.detections:
-            bbox = detection.bounding_box
-            x, y, w, h = bbox.origin_x, bbox.origin_y, bbox.width, bbox.height
-
-            try:
-                # Crop and prepare face
-                face_crop = frame[y:y+h, x:x+w]
-                face_resize = cv2.resize(face_crop, (160, 160))
-                face_array = np.expand_dims(face_resize, axis=0)
-                face_array = face_array / 255.0  # Normalize
-
-                # Get embedding
-                current_embedding = self.facenet_model.model.predict(face_array, verbose=0)[0]
-
-                # Calculate distance
-                distance_m = (self.KNOWN_WIDTH * self.FOCAL_LENGTH) / w / 100.0
-
-                # Find best match
-                best_match = "Unknown"
-                min_dist = 0.6  # Preserved threshold
-
-                for name, embeddings in self.known_faces.items():
-                    for db_emb in embeddings:
-                        # Cosine distance
-                        a = np.matmul(current_embedding, db_emb)
-                        b = np.sum(np.multiply(current_embedding, current_embedding))
-                        c = np.sum(np.multiply(db_emb, db_emb))
-                        dist = 1 - (a / (np.sqrt(b) * np.sqrt(c)))
-
-                        if dist < min_dist:
-                            min_dist = dist
-                            best_match = name
-
-                results.append((bbox, best_match, distance_m))
-
-            except Exception as e:
-                print(f"Recognition error: {e}")
-                results.append((bbox, "Unknown", 0.0))
-
-        return results
-
     def close(self):
         """
         Close the detector.
