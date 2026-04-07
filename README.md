@@ -76,3 +76,24 @@ A custom Natural Language Processor. Features the `_contains_wake_word()` gate t
    Ensure you have Python 3.9+ installed.
    ```bash
    pip install opencv-python mediapipe deepface pyttsx3 numpy SpeechRecognition tf-keras
+
+   Start the Main Vision Loop:
+
+Bash
+python main.py
+
+
+Start the Voice Client (In a separate terminal):
+Bash
+python mock_voice_client.py
+
+
+Usage:
+
+Speak into the mock client: "Lumo, enroll [Name]" to start the guided setup.
+
+Speak: "Lumo, forget [Name]" to delete them (requires confirmation).
+
+Speak: "Lumo, cancel" to stop any current action.
+
+Speak: "Lumo, quit" to shut down the system gracefully.
