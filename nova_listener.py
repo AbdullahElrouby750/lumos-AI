@@ -13,6 +13,7 @@ class CommandListener(threading.Thread):
         self.port = port
         self.running = True
         self.sock = None
+        self.noise_floor = 0.5 # Default
 
     def run(self):
         try:
@@ -37,8 +38,11 @@ class CommandListener(threading.Thread):
                     command["raw_text"] = raw_text
                     self.command_queue.put(command)
                     print(f"Received voice command: {command}")
-                    # Voice barge-in: Clear non-danger messages
-                    self.voice_queue.clear_non_danger_queue()
+    
+                    # Voice barge-in: Purge old messages and PAUSE the worker
+                    if hasattr(self.voice_queue, 'clear_below_critical'):
+                        self.voice_queue.clear_below_critical()
+                        self.voice_queue.pause_below_critical()
             except socket.timeout:
                 continue
             except json.JSONDecodeError:

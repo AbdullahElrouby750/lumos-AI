@@ -1,9 +1,15 @@
 import cv2
 import time
+import math
+from nove_forget import forget_person, get_names_from_PK
+import difflib
+from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT, INTENT_CANCEL, INTENT_CONFIRM, INTENT_DENY
 
 # Constants (preserved from existing code)
 KNOWN_WIDTH = 14.0  # cm
 FOCAL_LENGTH = 678.57  # Preserved calibrated value
+# Global state for Forget confirmation
+pending_forget_name = None
 
 def calculate_distance(face_width_pixels):
     """
@@ -86,7 +92,6 @@ class CentroidTracker:
         Update the tracker with new bounding boxes.
         Returns dict of {object_id: bbox} for currently tracked objects.
         """
-        import math
 
         result = {}
 
@@ -201,43 +206,83 @@ def is_bbox_expanding(bbox_current, bbox_previous, threshold=20):
 
 
 def process_command(command, enrollment_manager, voice_queue, quit_flag):
-    """Process a command from the queue."""
-    from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
-    from nove_forget import forget_person, get_names_from_PK
-    import time
-    
+
+
     intent = command.get("intent")
     target_name = command.get("target_name")
+    global pending_forget_name
+    
+    try:
+        
+        # --- NEW: CONFIRMATION LOGIC ---
+        if pending_forget_name:
+            if intent == INTENT_CONFIRM:
+                names_stored = get_names_from_PK()
+                result = forget_person(pending_forget_name, names_stored)
+                voice_queue.speak(result, voice_queue.PRIORITY_FEEDBACK)
+                pending_forget_name = None  # Reset state
+                return
+            elif intent in [INTENT_DENY, INTENT_CANCEL]:
+                voice_queue.speak("Deletion cancelled.", voice_queue.PRIORITY_FEEDBACK)
+                pending_forget_name = None  # Reset state
+                return
+            # If they say something else entirely, we just let the command process normally 
+            # but we clear the pending state so it doesn't get stuck.
+            elif intent != "INTENT_NONE":
+                pending_forget_name = None
 
-    if intent == INTENT_ENROLL:
-        if not target_name:
-            voice_queue.speak("Please say the name to enroll.", voice_queue.PRIORITY_WARNING)
+        # --- 1. CANCEL LOGIC ---
+        if intent == INTENT_CANCEL:
+            enrollment_manager.cancel()
+            # Drain system and info queues, but keep critical warnings
+            voice_queue.cancel_queues(voice_queue.PRIORITY_SYSTEM, voice_queue.PRIORITY_INFO)
+            voice_queue.speak("Action cancelled.", voice_queue.PRIORITY_FEEDBACK)
             return
-        if enrollment_manager.active:
-            voice_queue.speak("Enrollment is already in progress.", voice_queue.PRIORITY_WARNING)
-            return
-        enrollment_manager.start(target_name, time.time())
-        return
 
-    if intent == INTENT_FORGET:
-        if not target_name:
-            voice_queue.speak("Please say the name to forget.", voice_queue.PRIORITY_WARNING)
-            return
-
-        names_stored = get_names_from_PK()
-        if not names_stored:
-            voice_queue.speak("No stored people found.", voice_queue.PRIORITY_WARNING)
+        # --- 2. ENROLL LOGIC ---
+        if intent == INTENT_ENROLL:
+            if not target_name:
+                voice_queue.speak("Please say the name to enroll.", voice_queue.PRIORITY_FEEDBACK)
+                return
+            if enrollment_manager.active:
+                voice_queue.speak("Enrollment is already in progress.", voice_queue.PRIORITY_FEEDBACK)
+                return
+            enrollment_manager.start(target_name, time.time())
             return
 
-        result = forget_person(target_name, names_stored)
-        voice_queue.speak(result, voice_queue.PRIORITY_WARNING)
-        return
+        # --- 3. FORGET LOGIC (Fuzzy Match & Lists) ---
+        if intent == INTENT_FORGET:
+            names_stored = get_names_from_PK()
+            if not names_stored:
+                voice_queue.speak("Your database is empty.", voice_queue.PRIORITY_FEEDBACK)
+                return
 
-    if intent == INTENT_QUIT:
-        quit_flag[0] = True
-        return
+            # If user didn't say a name: read the list
+            if not target_name:
+                name_list = ", ".join([f"Number {i+1}: {name}" for i, name in enumerate(names_stored.keys())])
+                voice_queue.speak(f"Who should I forget? I know: {name_list}", voice_queue.PRIORITY_SYSTEM)
+                return
 
-    # Ignore INTENT_NONE
+            # Fuzzy match (If user says "Ruby", find "Rouby")
+            best_matches = difflib.get_close_matches(target_name, names_stored.keys(), n=1, cutoff=0.6)
+            
+            if best_matches:
+                matched_name = best_matches[0]
+                pending_forget_name = matched_name
+                voice_queue.speak(f"Are you sure you want to forget {matched_name}? Say yes to confirm.", voice_queue.PRIORITY_FEEDBACK)
+            else:
+                voice_queue.speak(f"I couldn't find {target_name}. Please try again.", voice_queue.PRIORITY_FEEDBACK)
+            return
+
+        # --- 4. QUIT LOGIC ---
+        if intent == INTENT_QUIT:
+            quit_flag[0] = True
+            return
+
+    finally:
+        # ALWAYS resume the voice queue after processing a command
+        if hasattr(voice_queue, 'resume'):
+            voice_queue.resume()
 
 
 def handle_manual_input(intent_type, command_queue):

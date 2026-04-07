@@ -4,10 +4,16 @@ INTENT_NONE = "INTENT_NONE"
 INTENT_ENROLL = "INTENT_ENROLL"
 INTENT_FORGET = "INTENT_FORGET"
 INTENT_QUIT = "INTENT_QUIT"
+INTENT_CANCEL = "INTENT_CANCEL"
+INTENT_CONFIRM = "INTENT_CONFIRM"
+INTENT_DENY = "INTENT_DENY"
 
 ENROLL_KEYWORDS = ["enroll", "add", "remember", "register", "save"]
 FORGET_KEYWORDS = ["delete", "remove", "forget", "clear"]
-QUIT_KEYWORDS = ["quit", "exit", "stop", "close", "shutdown"]
+QUIT_KEYWORDS = ["quit", "exit", "close", "shutdown"]
+CANCEL_KEYWORDS = ["cancel", "abort", "stop enrollment", "never mind", "stop"]
+CONFIRM_KEYWORDS = ["yes", "yeah", "yep", "sure", "do it", "confirm"]
+DENY_KEYWORDS = ["no", "nope", "don't"]
 IGNORE_WORDS = {
     "hey", "lumo", "lumos", "please", "the", "a", "an", "to", "of", "me", "my", "can", "you"
 }
@@ -49,6 +55,18 @@ def parse_intent(raw_text):
     for keyword in QUIT_KEYWORDS:
         if keyword in lower_text:
             return {"intent": INTENT_QUIT, "target_name": None}
+
+    for keyword in CONFIRM_KEYWORDS:
+            if keyword in lower_text:
+                return {"intent": INTENT_CONFIRM, "target_name": None}
+
+    for keyword in DENY_KEYWORDS:
+        if keyword in lower_text:
+            return {"intent": INTENT_DENY, "target_name": None}
+
+    for keyword in CANCEL_KEYWORDS:
+        if keyword in lower_text:
+            return {"intent": INTENT_CANCEL, "target_name": None}
 
     for keyword in FORGET_KEYWORDS:
         if keyword in lower_text:

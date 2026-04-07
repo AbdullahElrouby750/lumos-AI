@@ -97,8 +97,6 @@ def main():
         vision_pipeline.close()
 
         voice_queue.speak("Lumos shutting down", VoiceQueue.PRIORITY_INFO)
-        while voice_queue.get_queue_size() > 0:
-            time.sleep(0.5)
         time.sleep(2)
         voice_queue.stop()
 
