@@ -188,21 +188,20 @@ def is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
     return zone_left <= center_x <= zone_right
 
 
-def is_bbox_expanding(bbox_current, bbox_previous, threshold=20):
+def is_bbox_expanding(bbox_current, bbox_history_list, threshold=5):
     """
-    Check if a bounding box is getting larger (width increasing).
-    Used to detect if a face is approaching the camera.
-    
-    Args:
-        bbox_current: Current bounding box
-        bbox_previous: Previous frame's bounding box
-    
-    Returns:
-        True if current box is larger, False otherwise
+    Checks if bounding box is expanding using a moving average over the last 5 frames.
+    Fixes the 'jitter' spam.
     """
-    if bbox_previous is None:
+    if not bbox_history_list or len(bbox_history_list) < 3:
         return False
-    return (bbox_current.width - bbox_previous.width) > threshold
+    
+    # Get average width of older frames
+    older_avg = sum(b.width for b in bbox_history_list[:-1]) / (len(bbox_history_list) - 1)
+    current_width = bbox_current.width
+    
+    # Only return True if the current width is consistently larger than the recent average
+    return (current_width - older_avg) > threshold
 
 
 def process_command(command, enrollment_manager, voice_queue, quit_flag):

@@ -19,7 +19,8 @@ class VisionPipeline:
         self.temporal_votes = {} # NEW: {face_id: [guess1, guess2, guess3]}
         self.recognized_ids = set()
         self.previous_bboxes = {}
-        self.alerted_approaching_ids = set()
+        self.bbox_history_buffer = {} # NEW: {face_id: [bbox1, bbox2, ...]}
+        self.alerted_approaching_ids = {} # CHANGED: Now a Dict for timestamp locks
         self.name_cooldowns = {}
         self.COOLDOWN_TIME = 30.0
 
@@ -106,12 +107,31 @@ class VisionPipeline:
                     if is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
                         prev_bbox = self.previous_bboxes.get(face_id)
                         if is_bbox_expanding(bbox, prev_bbox, threshold=10):
-                            if face_id not in self.alerted_approaching_ids:
-                                self.voice_queue.speak(
-                                    f"{name} approaching",
-                                    self.voice_queue.PRIORITY_WARNING
-                                )
-                                self.alerted_approaching_ids.add(face_id)
+                            # 1. Update the Jitter Buffer
+                            if face_id not in self.bbox_history_buffer:
+                                self.bbox_history_buffer[face_id] = []
+                            self.bbox_history_buffer[face_id].append(bbox)
+
+                            # Keep only the last 5 frames for the moving average
+                            if len(self.bbox_history_buffer[face_id]) > 5:
+                                self.bbox_history_buffer[face_id].pop(0)
+
+                            # 2. Check the Collision Zone & Cooldown
+                            if name != "Unknown":
+                                if is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
+                                    # Get the last time we warned about this person (default to 0)
+                                    last_alert_time = self.alerted_approaching_ids.get(face_id, 0)
+
+                                    # 5-SECOND LOCK: Only calculate expansion if 5 seconds have passed
+                                    if current_time - last_alert_time > 5.0:
+                                        if is_bbox_expanding(bbox, self.bbox_history_buffer[face_id], threshold=5):
+                                            # FIRE WARNING!
+                                            self.voice_queue.speak(f"{name} approaching", self.voice_queue.PRIORITY_WARNING)
+                                            # Lock it with the current timestamp!
+                                            self.alerted_approaching_ids[face_id] = current_time 
+                                else:
+                                    # If they leave the collision zone, instantly remove the lock
+                                    self.alerted_approaching_ids.pop(face_id, None)
                     else:
                         self.alerted_approaching_ids.discard(face_id)
 
@@ -135,7 +155,8 @@ class VisionPipeline:
                 self.recognition_results.pop(fid, None)
                 self.recognition_threads.pop(fid, None)
                 self.temporal_votes.pop(fid, None)
-                self.alerted_approaching_ids.discard(fid)
+                self.bbox_history_buffer.pop(fid, None) # NEW: Clean up jitter buffer
+                self.alerted_approaching_ids.pop(fid, None) # CHANGED: Now uses .pop since it's a dict
 
         # Draw collision zone lines
         zone_left = int(frame_width * 0.3)
