@@ -50,7 +50,7 @@ class PoseValidator:
         # If a hand covers the mouth, the AI hallucinates the lips, often crushing them together.
         upper_lip = landmarks[13].y
         lower_lip = landmarks[14].y
-        if abs(upper_lip - lower_lip) < 0.001: 
+        if abs(upper_lip - lower_lip) < 0.008:  # Threshold for "crushed lips"
             return False, "Please uncover your mouth."
 
         # --- ANATOMICAL POSE MATH ---
