@@ -1,9 +1,10 @@
 import cv2
 import time
 import math
-from nove_forget import forget_person, get_names_from_PK
 import difflib
-from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT, INTENT_CANCEL, INTENT_CONFIRM, INTENT_DENY
+import random
+from nove_forget import forget_person, get_names_from_PK
+from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT, INTENT_CANCEL, INTENT_CONFIRM, INTENT_DENY, INTENT_WAKE_ONLY
 
 # Constants (preserved from existing code)
 KNOWN_WIDTH = 14.0  # cm
@@ -213,6 +214,18 @@ def process_command(command, enrollment_manager, voice_queue, quit_flag, vision_
     
     try:
         
+        # --- WAKE WORD ONLY LOGIC ---
+        if intent == INTENT_WAKE_ONLY:
+            greetings = [
+                "I'm here.", 
+                "How can I help you?", 
+                "Listening.", 
+                "At your service.", 
+                "What's up?"
+            ]
+            voice_queue.speak(random.choice(greetings), voice_queue.PRIORITY_FEEDBACK)
+            return
+
         # --- NEW: CONFIRMATION LOGIC ---
         if pending_forget_name:
             if intent == INTENT_CONFIRM:

@@ -8,13 +8,14 @@ INTENT_QUIT = "INTENT_QUIT"
 INTENT_CANCEL = "INTENT_CANCEL"
 INTENT_CONFIRM = "INTENT_CONFIRM"
 INTENT_DENY = "INTENT_DENY"
+INTENT_WAKE_ONLY = "INTENT_WAKE_ONLY"
 
 # The Wake Word Dictionary (includes common STT misspellings)
 WAKE_WORDS = ["lumo", "luma", "lumos", "loomo", "lumus", "lama", "lima", "lomo", "roomo", "ruma"]
 
 ENROLL_KEYWORDS = ["enroll", "add", "remember", "register", "save"]
 FORGET_KEYWORDS = ["delete", "remove", "forget", "clear"]
-QUIT_KEYWORDS = ["quit", "exit", "close", "shutdown"]
+QUIT_KEYWORDS = ["quit", "exit", "close", "shutdown", "shut-down", "shut down"]
 CANCEL_KEYWORDS = ["cancel", "abort", "stop enrollment", "never mind", "stop"]
 CONFIRM_KEYWORDS = ["yes", "yeah", "yep", "sure", "do it", "confirm"]
 DENY_KEYWORDS = ["no", "nope", "don't"]
@@ -98,4 +99,4 @@ def parse_intent(raw_text):
             target_name = _extract_name(text, keyword)
             return {"intent": INTENT_ENROLL, "target_name": target_name}
 
-    return {"intent": INTENT_NONE, "target_name": None}
+    return {"intent": INTENT_WAKE_ONLY, "target_name": None}
