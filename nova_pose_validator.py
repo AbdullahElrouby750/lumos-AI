@@ -1,47 +1,60 @@
+import os
+import urllib.request
 import cv2
-import mediapipe as mp
 import numpy as np
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 class PoseValidator:
-    """Validates face pose using MediaPipe FaceMesh for T-Zone landmarks."""
+    """Validates face pose using the modern MediaPipe FaceLandmarker for T-Zone landmarks."""
 
-    def __init__(self):
-        self.face_mesh = mp.solutions.face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+    def __init__(self, model_path='face_landmarker.task'):
+        self.model_path = model_path
+        self._ensure_model_exists()
+        
+        try:
+            # Initialize the modern Tasks API (Same standard as nova_face_detector)
+            base_options = python.BaseOptions(model_asset_path=self.model_path)
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                output_face_blendshapes=False,
+                output_facial_transformation_matrixes=False,
+                num_faces=1
+            )
+            self.landmarker = vision.FaceLandmarker.create_from_options(options)
+        except Exception as e:
+            print(f"Error initializing FaceLandmarker: {e}")
+            self.landmarker = None
+
+    def _ensure_model_exists(self):
+        """Automatically downloads the FaceLandmarker model if it's missing."""
+        if not os.path.exists(self.model_path):
+            print(f"Downloading {self.model_path}...")
+            url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            urllib.request.urlretrieve(url, self.model_path)
+            print("Download complete.")
 
     def validate_pose(self, frame, required_pose):
         """
         Validates the pose in the frame against the required pose.
         Returns (is_valid: bool, feedback_message: str)
         """
-        # Convert frame to RGB for MediaPipe
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.face_mesh.process(rgb_frame)
+        if self.landmarker is None:
+            return False, "Validator not initialized."
 
-        if not results.multi_face_landmarks:
+        # Convert frame to mp.Image (Tasks API standard)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        results = self.landmarker.detect(mp_image)
+
+        # If it can't find a face mesh at all, it's occluded or off-camera
+        if not results.face_landmarks:
             return False, "Please ensure your eyes, nose, and mouth are visible."
 
-        landmarks = results.multi_face_landmarks[0].landmark
+        landmarks = results.face_landmarks[0]
 
-        # T-Zone landmarks indices (approximate for key points)
-        # Nose tip: 1
-        # Left eye inner: 133, outer: 33
-        # Right eye inner: 362, outer: 263
-        # Upper lip: 13, lower lip: 14
-
-        t_zone_indices = [1, 133, 33, 362, 263, 13, 14]
-
-        # Check if all T-Zone landmarks are visible (not occluded)
-        for idx in t_zone_indices:
-            if landmarks[idx].visibility < 0.5:  # Threshold for visibility
-                return False, "Please ensure your eyes, nose, and mouth are visible."
-
-        # Calculate pose
+        # Extract T-Zone landmarks (x, y coordinates)
         nose = np.array([landmarks[1].x, landmarks[1].y])
         left_eye_inner = np.array([landmarks[133].x, landmarks[133].y])
         left_eye_outer = np.array([landmarks[33].x, landmarks[33].y])
@@ -50,7 +63,7 @@ class PoseValidator:
         upper_lip = np.array([landmarks[13].x, landmarks[13].y])
         lower_lip = np.array([landmarks[14].x, landmarks[14].y])
 
-        # Average eye positions
+        # Average eye and mouth positions
         left_eye_center = (left_eye_inner + left_eye_outer) / 2
         right_eye_center = (right_eye_inner + right_eye_outer) / 2
         mouth_center = (upper_lip + lower_lip) / 2
@@ -67,16 +80,12 @@ class PoseValidator:
 
         # Determine calculated pose (Mirror-Corrected Math)
         if yaw_ratio > 1.2:  
-            # Nose is closer to the right side of the image -> Person is looking Right
             calculated_pose = "right"
         elif yaw_ratio < 0.8:  
-            # Nose is closer to the left side of the image -> Person is looking Left
             calculated_pose = "left"
         elif pitch_ratio > 1.2:  
-            # Nose is closer to the mouth -> Person is looking Down
             calculated_pose = "down"
         elif pitch_ratio < 0.8:  
-            # Nose is closer to the eyes -> Person is looking Up
             calculated_pose = "up"
         else:
             calculated_pose = "straight"
@@ -86,3 +95,7 @@ class PoseValidator:
             return True, "Success"
         else:
             return False, f"Please look {required_pose}."
+
+    def close(self):
+        if self.landmarker:
+            self.landmarker.close()
