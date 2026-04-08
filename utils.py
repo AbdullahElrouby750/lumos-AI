@@ -188,12 +188,12 @@ def is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
     return zone_left <= center_x <= zone_right
 
 
-def is_bbox_expanding(bbox_current, bbox_history_list, threshold=5):
+def is_bbox_expanding(bbox_current, bbox_history_list, threshold=10):
     """
     Checks if bounding box is expanding using a moving average over the last 5 frames.
     Fixes the 'jitter' spam.
     """
-    if not bbox_history_list or len(bbox_history_list) < 3:
+    if not bbox_history_list or len(bbox_history_list) < 5:
         return False
     
     # Get average width of older frames

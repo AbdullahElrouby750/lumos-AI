@@ -22,7 +22,8 @@ class VisionPipeline:
         self.bbox_history_buffer = {} # NEW: {face_id: [bbox1, bbox2, ...]}
         self.alerted_approaching_ids = {} # CHANGED: Now a Dict for timestamp locks
         self.name_cooldowns = {}
-        self.COOLDOWN_TIME = 30.0
+        self.unknown_timers = {} # Tracks when a face was labeled "Unknown"
+        self.COOLDOWN_TIME = 120.0
 
     def process_frame(self, frame, current_time):
         """Process a single frame: detect, track, recognize, alert."""
@@ -50,6 +51,17 @@ class VisionPipeline:
 
             if y_end > y_start and x_end > x_start:
                 face_crop = frame[y_start:y_end, x_start:x_end].copy()
+                
+                # --- NEW: EXPIRATION GATE FOR UNKNOWNS ---
+                # If they've been 'Unknown' for more than 10 seconds, wipe their memory so we try again!
+                if face_id in self.recognition_results and self.recognition_results[face_id] == "Unknown":
+                    if current_time - self.unknown_timers.get(face_id, 0) > 10.0:
+                        self.recognition_results.pop(face_id, None)
+                        self.temporal_votes.pop(face_id, None)
+                        self.unknown_timers.pop(face_id, None) # <--- YOUR FIX: Clean the timer!
+                        print(f"DEBUG: 10 seconds passed. Re-evaluating Unknown Face ID: {face_id}")
+                # ----------------------------------------
+                
                 # Only spawn a new thread if we haven't locked in a final result
                 # AND if there isn't already a thread actively working on this face ID
                 if face_id not in self.recognition_results and face_id not in self.recognition_threads:
@@ -72,6 +84,10 @@ class VisionPipeline:
                                 final_name = max(set(votes), key=votes.count)
                                 # Lock in the final result!
                                 self.recognition_results[fid] = final_name
+                                
+                                # NEW: Start the 10-second expiration clock if they are Unknown
+                                if final_name == "Unknown":
+                                    self.unknown_timers[fid] = time.time()
                                 
                         except Exception as e:
                             print(f"Recognition thread error: {e}")
@@ -96,7 +112,7 @@ class VisionPipeline:
                     last_spoken_time = self.name_cooldowns.get(name, 0)
                     if current_time - last_spoken_time > self.COOLDOWN_TIME:
                         self.voice_queue.speak(
-                            f"I see {name}",
+                            f"hi, I see {name}",
                             self.voice_queue.PRIORITY_SOCIAL
                         )
                         self.name_cooldowns[name] = current_time
@@ -120,14 +136,16 @@ class VisionPipeline:
 
                         # 5-SECOND LOCK: Only calculate expansion if 5 seconds have passed
                         if current_time - last_alert_time > 5.0:
-                            if is_bbox_expanding(bbox, self.bbox_history_buffer[face_id], threshold=5):
+                            if is_bbox_expanding(bbox, self.bbox_history_buffer[face_id], threshold=20):
                                 # FIRE WARNING!
-                                self.voice_queue.speak(f"{name} approaching", self.voice_queue.PRIORITY_WARNING)
+                                self.voice_queue.speak(f"hello, {name} approaching", self.voice_queue.PRIORITY_WARNING)
                                 # Lock it with the current timestamp!
                                 self.alerted_approaching_ids[face_id] = current_time 
+                                self.bbox_history_buffer[face_id] = [] # Clear the jitter buffer after a warning to prevent multiple warnings from the same approach
                     else:
                         # If they leave the collision zone, instantly remove the lock
-                        self.alerted_approaching_ids.pop(face_id, None)
+                        # self.alerted_approaching_ids.pop(face_id, None)
+                        print(f"DEBUG: {name} (ID:{face_id}) left the collision zone, resetting alert lock.")
                 else:
                     self.alerted_approaching_ids.pop(face_id, None)
 
@@ -153,6 +171,7 @@ class VisionPipeline:
                 self.temporal_votes.pop(fid, None)
                 self.bbox_history_buffer.pop(fid, None) # NEW: Clean up jitter buffer
                 self.alerted_approaching_ids.pop(fid, None) # CHANGED: Now uses .pop since it's a dict
+                self.unknown_timers.pop(face_id, None) # NEW: Clean up unknown timer
 
         # Draw collision zone lines
         zone_left = int(frame_width * 0.3)

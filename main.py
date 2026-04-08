@@ -96,7 +96,7 @@ def main():
         cv2.destroyAllWindows()
         vision_pipeline.close()
 
-        voice_queue.speak("Lumos shutting down", VoiceQueue.PRIORITY_INFO)
+        voice_queue.speak("Lumos shutting down", VoiceQueue.PRIORITY_FEEDBACK)
         time.sleep(2)
         voice_queue.stop()
 
