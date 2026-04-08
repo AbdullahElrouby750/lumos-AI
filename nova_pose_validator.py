@@ -14,7 +14,6 @@ class PoseValidator:
         self._ensure_model_exists()
         
         try:
-            # Initialize the modern Tasks API (Same standard as nova_face_detector)
             base_options = python.BaseOptions(model_asset_path=self.model_path)
             options = vision.FaceLandmarkerOptions(
                 base_options=base_options,
@@ -28,7 +27,6 @@ class PoseValidator:
             self.landmarker = None
 
     def _ensure_model_exists(self):
-        """Automatically downloads the FaceLandmarker model if it's missing."""
         if not os.path.exists(self.model_path):
             print(f"Downloading {self.model_path}...")
             url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
@@ -36,56 +34,55 @@ class PoseValidator:
             print("Download complete.")
 
     def validate_pose(self, frame, required_pose):
-        """
-        Validates the pose in the frame against the required pose.
-        Returns (is_valid: bool, feedback_message: str)
-        """
         if self.landmarker is None:
             return False, "Validator not initialized."
 
-        # Convert frame to mp.Image (Tasks API standard)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         results = self.landmarker.detect(mp_image)
 
-        # If it can't find a face mesh at all, it's occluded or off-camera
         if not results.face_landmarks:
-            return False, "Please ensure your eyes, nose, and mouth are visible."
+            return False, "Please ensure your face is fully visible."
 
         landmarks = results.face_landmarks[0]
 
-        # Extract T-Zone landmarks (x, y coordinates)
-        nose = np.array([landmarks[1].x, landmarks[1].y])
-        left_eye_inner = np.array([landmarks[133].x, landmarks[133].y])
-        left_eye_outer = np.array([landmarks[33].x, landmarks[33].y])
-        right_eye_inner = np.array([landmarks[362].x, landmarks[362].y])
-        right_eye_outer = np.array([landmarks[263].x, landmarks[263].y])
-        upper_lip = np.array([landmarks[13].x, landmarks[13].y])
-        lower_lip = np.array([landmarks[14].x, landmarks[14].y])
+        # --- OCCLUSION CHECK (The Hand-over-mouth fix) ---
+        # If a hand covers the mouth, the AI hallucinates the lips, often crushing them together.
+        upper_lip = landmarks[13].y
+        lower_lip = landmarks[14].y
+        if abs(upper_lip - lower_lip) < 0.001: 
+            return False, "Please uncover your mouth."
 
-        # Average eye and mouth positions
-        left_eye_center = (left_eye_inner + left_eye_outer) / 2
-        right_eye_center = (right_eye_inner + right_eye_outer) / 2
-        mouth_center = (upper_lip + lower_lip) / 2
+        # --- ANATOMICAL POSE MATH ---
+        # Pitch (Up/Down) -> Brow (168), Nose Tip (1), Chin (152)
+        brow_y = landmarks[168].y
+        nose_y = landmarks[1].y
+        chin_y = landmarks[152].y
+        
+        # Yaw (Left/Right) -> Left Cheek Edge (234), Nose Tip (1), Right Cheek Edge (454)
+        left_edge_x = landmarks[234].x
+        nose_x = landmarks[1].x
+        right_edge_x = landmarks[454].x
 
-        # Yaw: Horizontal asymmetry (left/right)
-        dist_nose_left = np.linalg.norm(nose - left_eye_center)
-        dist_nose_right = np.linalg.norm(nose - right_eye_center)
-        yaw_ratio = dist_nose_left / (dist_nose_right + 1e-6)  # Avoid division by zero
+        # Calculate distances
+        upper_face = abs(nose_y - brow_y)
+        lower_face = abs(chin_y - nose_y)
+        left_side = abs(nose_x - left_edge_x)
+        right_side = abs(right_edge_x - nose_x)
 
-        # Pitch: Vertical positioning (up/down)
-        eye_nose_dist = np.abs(nose[1] - (left_eye_center[1] + right_eye_center[1]) / 2)
-        nose_mouth_dist = np.abs(mouth_center[1] - nose[1])
-        pitch_ratio = eye_nose_dist / (nose_mouth_dist + 1e-6)
+        # Ratios
+        pitch_ratio = upper_face / (lower_face + 1e-6)
+        yaw_ratio = left_side / (right_side + 1e-6)
 
         # Determine calculated pose (Mirror-Corrected Math)
-        if yaw_ratio > 1.2:  
+        # Using safe thresholds (1.35 and 0.7) to allow for natural resting faces
+        if yaw_ratio > 1.35:  
             calculated_pose = "right"
-        elif yaw_ratio < 0.8:  
+        elif yaw_ratio < 0.7:  
             calculated_pose = "left"
-        elif pitch_ratio > 1.2:  
+        elif pitch_ratio > 1.35:  
             calculated_pose = "down"
-        elif pitch_ratio < 0.8:  
+        elif pitch_ratio < 0.7:  
             calculated_pose = "up"
         else:
             calculated_pose = "straight"
