@@ -44,6 +44,7 @@ class VoiceQueue:
         self._is_paused  = threading.Event()   # set → worker holds non-CRITICAL items
         self._is_speaking = threading.Event()  # set → TTS engine is active right now
         self._cooldowns  = {}                  # {(priority, text_hash): last_spoken_time}
+        self.current_text = ""
 
         self._worker_thread = threading.Thread(target=self._worker, daemon=True)
         self._worker_thread.start()
@@ -149,6 +150,7 @@ class VoiceQueue:
 
             # Speak
             try:
+                self.current_text = text.lower()
                 self._is_speaking.set()
                 engine = pyttsx3.init()
                 engine.setProperty('rate', 190)
@@ -159,6 +161,7 @@ class VoiceQueue:
                 print(f"[VoiceQueue] TTS error: {e}")
             finally:
                 self._is_speaking.clear()
+                self.current_text = ""
 
 
 # Global singleton accessor

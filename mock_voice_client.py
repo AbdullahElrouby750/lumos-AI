@@ -31,7 +31,7 @@ def listen_and_send(host, port):
             while True:
                 print("Listening for voice command...")
                 try:
-                    audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+                    audio = recognizer.listen(source, timeout=3, phrase_time_limit=5)
                     phrase = recognizer.recognize_google(audio)
                     phrase = phrase.strip()
 

@@ -11,7 +11,7 @@ INTENT_DENY = "INTENT_DENY"
 INTENT_WAKE_ONLY = "INTENT_WAKE_ONLY"
 
 # The Wake Word Dictionary (includes common STT misspellings)
-WAKE_WORDS = ["lumo", "luma", "lumos", "loomo", "lumus", "lama", "lima", "lomo", "roomo", "ruma"]
+WAKE_WORDS = ["lumo", "luma", "lumos", "lumus", "lumo's", "luma's", "lumos's", "lumus's"]
 
 ENROLL_KEYWORDS = ["enroll", "add", "remember", "register", "save"]
 FORGET_KEYWORDS = ["delete", "remove", "forget", "clear"]
@@ -31,7 +31,7 @@ def _contains_wake_word(text):
         if word in WAKE_WORDS:
             return True
         # Fuzzy match (catches minor spelling errors from the microphone)
-        if difflib.get_close_matches(word, WAKE_WORDS, n=1, cutoff=0.75):
+        if difflib.get_close_matches(word, WAKE_WORDS, n=1, cutoff=0.8):
             return True
     return False
 

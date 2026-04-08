@@ -46,18 +46,24 @@ class PoseValidator:
 
         landmarks = results.face_landmarks[0]
 
-        # --- OCCLUSION CHECK (The Hand-over-mouth fix) ---
-        # If a hand covers the mouth, the AI hallucinates the lips, often crushing them together.
-        upper_lip = landmarks[13].y
-        lower_lip = landmarks[14].y
-        if abs(upper_lip - lower_lip) < 0.008:  # Threshold for "crushed lips"
-            return False, "Please uncover your mouth."
-
         # --- ANATOMICAL POSE MATH ---
         # Pitch (Up/Down) -> Brow (168), Nose Tip (1), Chin (152)
         brow_y = landmarks[168].y
         nose_y = landmarks[1].y
         chin_y = landmarks[152].y
+        
+        # 1. Calculate the total height of the visible face (Brow to Chin)
+        face_height = abs(chin_y - brow_y)
+        
+        # 2. OCCLUSION CHECK: Compare lip gap to face height
+        upper_lip_y = landmarks[13].y
+        lower_lip_y = landmarks[14].y
+        lip_gap = abs(upper_lip_y - lower_lip_y)
+        
+        # If the lip gap is less than 0.5% of the total face height, 
+        # the landmarks are likely 'collapsed' by a hand/obstruction.
+        if lip_gap < (face_height * 0.005): 
+            return False, "Please uncover your mouth."
         
         # Yaw (Left/Right) -> Left Cheek Edge (234), Nose Tip (1), Right Cheek Edge (454)
         left_edge_x = landmarks[234].x

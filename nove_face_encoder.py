@@ -1,15 +1,7 @@
 import os
 import pickle
 from deepface import DeepFace
-import pyttsx3 as tts
 import threading
-
-def speak(text):
-    engine = tts.init()
-    engine.setProperty('rate', 170)
-    engine.say(text)
-    engine.runAndWait()
-    
 
 
 def build_nova_brain(name = "Person"):
@@ -61,7 +53,6 @@ def build_nova_brain(name = "Person"):
                 
     # 4. Final Report
         print(f"\nEncoding complete. {success_count} faces encoded, {failure_count} failures. {len(known_faces)} unique individuals in the brain.") 
-        threading.Thread(target=speak, args=(f"Encoding complete. {success_count} faces encoded, {failure_count} failures.",), daemon=True).start()
 
     # 4. Save the mathematical brain to disk
     with open(ENCODINGS_FILE, "wb") as f:

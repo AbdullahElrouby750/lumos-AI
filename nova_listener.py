@@ -1,6 +1,9 @@
+import difflib
 import json
 import socket
 import threading
+
+from nova_commands import parse_intent
 
 class CommandListener(threading.Thread):
     """Listens for local JSON voice commands on UDP and pushes them into a queue."""
@@ -31,8 +34,17 @@ class CommandListener(threading.Thread):
                 data, _ = self.sock.recvfrom(4096)
                 payload = json.loads(data.decode("utf-8"))
                 raw_text = payload.get("raw_text", "")
+                
+                # --- NEW: SELF-AWARENESS FILTER ---
+                if self.voice_queue.is_speaking:
+                    current_speech = self.voice_queue.current_text
+                    # If the mic hears more than 80% of what Lumos is saying, IGNORE IT.
+                    match_ratio = difflib.SequenceMatcher(None, raw_text, current_speech).ratio()
+                    if match_ratio > 0.8:
+                        print(f"DEBUG: Talk-back detected ({int(match_ratio*100)}% match). Ignoring self-voice.")
+                        continue
+                # ----------------------------------
                 # Import here to avoid circular import
-                from nova_commands import parse_intent
                 command = parse_intent(raw_text)
                 if command["intent"] != "INTENT_NONE":
                     command["raw_text"] = raw_text
