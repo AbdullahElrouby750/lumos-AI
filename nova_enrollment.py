@@ -113,6 +113,11 @@ class EnrollmentManager:
     def _build_brain(self, name):
         try:
             self.voice_queue.speak("Building enrollment database.", VoiceQueue.PRIORITY_INFO)
+            
+            # NEW: Pause the vision pipeline to prevent thread collisions
+            if self.vision_pipeline:
+                self.vision_pipeline.is_paused = True
+            
             build_nova_brain(name)
 
             # NEW: Trigger the hot-reload
@@ -122,4 +127,6 @@ class EnrollmentManager:
             self.voice_queue.speak("Enrollment database updated.", VoiceQueue.PRIORITY_INFO)
         except Exception as e:
             print(f"Enrollment build error: {e}")
+            if self.vision_pipeline:
+                self.vision_pipeline.is_paused = False
             self.voice_queue.speak("Enrollment failed.", VoiceQueue.PRIORITY_WARNING)

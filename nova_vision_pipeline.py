@@ -24,6 +24,7 @@ class VisionPipeline:
         self.name_cooldowns = {}
         self.unknown_timers = {} # Tracks when a face was labeled "Unknown"
         self.COOLDOWN_TIME = 120.0
+        self.is_paused = False # NEW: Stops recognition during brain builds
         
     def hot_reload(self):
         """Forces the recognizer to reload the brain and wipes the pipeline's short-term memory."""
@@ -77,7 +78,7 @@ class VisionPipeline:
                 
                 # Only spawn a new thread if we haven't locked in a final result
                 # AND if there isn't already a thread actively working on this face ID
-                if face_id not in self.recognition_results and face_id not in self.recognition_threads:
+                if not self.is_paused and face_id not in self.recognition_results and face_id not in self.recognition_threads:
                     
                     def recognize_worker(fid, crop):
                         try:

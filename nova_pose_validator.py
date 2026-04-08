@@ -62,7 +62,7 @@ class PoseValidator:
         
         # If the lip gap is less than 0.5% of the total face height, 
         # the landmarks are likely 'collapsed' by a hand/obstruction.
-        if lip_gap < (face_height * 0.005): 
+        if lip_gap < (face_height * 0.002): 
             return False, "Please uncover your mouth."
         
         # Yaw (Left/Right) -> Left Cheek Edge (234), Nose Tip (1), Right Cheek Edge (454)
@@ -81,14 +81,14 @@ class PoseValidator:
         yaw_ratio = left_side / (right_side + 1e-6)
 
         # Determine calculated pose (Mirror-Corrected Math)
-        # Using safe thresholds (1.35 and 0.7) to allow for natural resting faces
-        if yaw_ratio > 1.35:  
+        # Using safe thresholds (1.2 and 0.8) to allow for natural resting faces
+        if yaw_ratio > 1.2:  
             calculated_pose = "right"
-        elif yaw_ratio < 0.7:  
+        elif yaw_ratio < 0.8:  
             calculated_pose = "left"
-        elif pitch_ratio > 1.35:  
+        elif pitch_ratio > 1.2:  
             calculated_pose = "down"
-        elif pitch_ratio < 0.7:  
+        elif pitch_ratio < 0.8:  
             calculated_pose = "up"
         else:
             calculated_pose = "straight"
