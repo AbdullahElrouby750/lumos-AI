@@ -75,13 +75,19 @@ class EnrollmentManager:
                     self.voice_queue.speak("Pose looks good!", VoiceQueue.PRIORITY_FEEDBACK)
                     self.step_saved = True
                     self.step_index += 1
+                    # BUG 2 FIX: clear validator history before the next pose step
+                    # so ratios from "look right" don't bias "look left" detection.
+                    self.validator.reset()
                     if self.step_index >= len(self.STEPS):
                         self._complete()
                     else:
                         self.step_started = False
                 else:
                     self.step_start_time = current_time  # Reset timer
-                    self.voice_queue.speak(feedback, VoiceQueue.PRIORITY_SYSTEM)
+                    # BUG 2 FIX: validator returns "" when the pose is correct but
+                    # consensus hasn't been reached yet.  Do not speak an empty string.
+                    if feedback:
+                        self.voice_queue.speak(feedback, VoiceQueue.PRIORITY_SYSTEM)
     
     def cancel(self):
         """
@@ -123,10 +129,11 @@ class EnrollmentManager:
             # NEW: Trigger the hot-reload
             if self.vision_pipeline:
                 self.vision_pipeline.hot_reload()
+                self.vision_pipeline.is_paused = False # <--- THE CRITICAL FIX
 
             self.voice_queue.speak("Enrollment database updated.", VoiceQueue.PRIORITY_INFO)
         except Exception as e:
             print(f"Enrollment build error: {e}")
             if self.vision_pipeline:
-                self.vision_pipeline.is_paused = False
+                self.vision_pipeline.is_paused = False # Safety resume
             self.voice_queue.speak("Enrollment failed.", VoiceQueue.PRIORITY_WARNING)

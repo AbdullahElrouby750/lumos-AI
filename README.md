@@ -1,99 +1,67 @@
-# Lumos: Social Vision & Face Recognition Module (Nova Team)
+Lumos: Social Vision & Face Recognition (Nova Team)
+Current Release: Version 3.0 (The "Bulletproof" Production Release)
+V3 Milestone: Zero-crash concurrency, Anatomical-Relative Pose Math, and MediaPipe/DeepFace State Synchronization.
 
-**Current Release: Version 2.0**
-*(Note on Versioning: Major versions are tracked by official pushes to the GitHub remote repository. V2 represents the accumulation of recent local Git commits pushed to remote, featuring the major "Demo-Proof" architectural overhaul).*
+👁️ Project Overview
+Lumos is a real-time assistive wearable AI for the visually impaired. It transforms raw video into social context, detecting faces, identifying individuals via Deep Learning, and managing spatial proximity alerts without ever dropping below 30 FPS.
 
-## 👁️ Project Overview
-This repository contains the **Social Vision Module** for **Lumos**, an assistive technology wearable designed for the visually impaired. 
+The V3 "Bulletproof" Standard
+Version 3.0 is engineered to survive the "chaos of the real world." Whether the camera is panning rapidly across a crowded room or being used in a dimly lit hallway, the system is designed to be mathematically stable and thread-safe.
 
-Moving beyond standard obstacle detection, this module acts as a "Social Brain". It actively scans the environment, detects human faces, calculates their distance, identifies known individuals using Deep Learning, and provides real-time, context-aware audio feedback to the user.
+⚙️ V3 Architectural Breakthroughs
+1. Zero-Crash Concurrency (Thread-Safe Inference)
+The Single-Thread Ceiling: To prevent TensorFlow/DeepFace from "segfaulting" during rapid movement, V3 implements a BoundedSemaphore capped at 1 concurrent inference thread. This ensures the C++ backend never deadlocks.
 
-### The Prime Directive: Zero Blocking
-Because this is assistive technology for the visually impaired, **camera freezing or frame dropping is a critical safety hazard**. This entire architecture is built around a "Prime Directive": The main camera loop must *never* drop below 30 FPS. All heavy processing (DeepFace alignment, Text-to-Speech audio drivers, network listening, and state machines) are offloaded to asynchronous background threads and queues.
+Safe-Crop Protection: Implements an spatial boundary check that prevents the system from attempting to process "zero-pixel" or negative-coordinate crops when a face is at the edge of the frame.
 
----
+State Locking: All shared dictionaries are protected by a global _state_lock to prevent Python "Dictionary Tearing" during background updates.
 
-## ⚙️ How It Works (The V2 Architecture)
-The system uses a highly optimized **Microservice-style CEO/Worker Architecture**:
-1. **The CEO (`main.py`):** Captures frames at 30 FPS and delegates them.
-2. **The Consensus Gate (Vision Pipeline):** Uses a lightweight `CentroidTracker` to follow moving bounding boxes. When a face is detected, it spawns a worker thread to align and identify the face. It requires a **3-frame Temporal Vote** before locking in a result to prevent hallucination from motion blur.
-3. **The Jitter Buffer & Collision Zone:** Calculates a central 40% "Collision Zone," ignoring people passing safely on the periphery. It utilizes a **5-frame Moving Average Buffer** to calculate bounding box expansion, eliminating camera jitter and only warning the user if a recognized face is physically approaching them. Alerts are locked for 5 seconds to prevent spam.
-4. **The Wake Word NLP Engine:** Uses a UDP socket to listen for voice commands. Commands are locked behind a fuzzy-matched **Wake Word Gate** ("Lumo", "Luma", etc.) so background conversations are ignored.
-5. **The 7-Rank Audio Manager:** A thread-safe Priority Queue ensures the Text-to-Speech engine never crashes. It categorizes audio into 7 strict ranks (Critical down to Low). If a voice command is received, the system executes a "Barge-In," pausing lower-priority speech instantly so the user can be heard.
+2. Anatomical-Relative Pose Math (T-Zone)
+Distance-Independent Validation: The V2 "hard-coded" thresholds were replaced in V3 with Face-Relative Scaling. Validation now compares the "Lip Gap" to the "Face Height," ensuring that mouth-occlusion checks work perfectly whether you are 1 or 5 meters away.
 
----
+Laptop Perspective Fix: Thresholds for "Straight" poses were widened to 1.4/0.6 to accommodate the physical reality of laptop cameras looking upward at a user's face.
 
-## 📁 Module Breakdown
+Two-Stage Temporal Filtering: Includes a Moving Average Buffer (5 frames) and a Consensus Gate (3 frames) to eliminate jitter in bad lighting.
 
-### 1. Core Orchestration
-#### `main.py` (The CEO)
-The entry point of the application. It initializes the camera, spins up the background threads (Audio Queue, Command Listener), and runs the master `while` loop. It routes frames to the Vision Pipeline and the Enrollment Manager. 
+3. Acoustic Self-Awareness & Queue Management
+Talk-Back Filter: Using difflib.SequenceMatcher, Lumos listens to her own voice. If the microphone hears more than an 80% match to what she is currently speaking, the command is discarded to prevent "Self-Argument" loops.
 
-#### `utils.py` (Math, Tracking & State Management)
-Contains pure mathematical logic and command processing.
-* `CentroidTracker`: Calculates Euclidean distance between bounding box centers across frames to maintain temporary IDs for faces.
-* `is_bbox_expanding()`: Calculates a moving average of face widths over recent frames to definitively prove an object is approaching.
-* `process_command()`: Handles intent routing. Includes a memory state machine that uses `difflib` for fuzzy matching names and requires explicit "Yes/No" verbal confirmation before executing destructive actions like forgetting a user.
+The "Vision Coma" Fix: Enrollment now triggers an is_paused state. This puts MediaPipe to sleep while the heavy DeepFace brain-build happens, preventing hardware starvation and ensuring the camera feed stays live.
 
-### 2. Vision & Recognition
-#### `nova_vision_pipeline.py` (The Security Guard)
-Orchestrates the detection and recognition process. Manages the async `recognize_worker` threads, enforcing the 3-frame consensus vote. It also manages the 5-second `alerted_approaching_ids` lock and triggers `voice_queue.speak()`.
+📁 Core Logic Breakdown
+🛠️ The Orchestrators
+main.py (The CEO): Drives the 30 FPS loop, manages the OpenCV window, and handles manual keyboard overrides ('s', 'f', 'q').
 
-#### `nova_face_detector.py`
-A lightweight wrapper around Google's `MediaPipe` Face Detector (`blaze_face_short_range.tflite`). Returns precise bounding boxes and landmarks.
+nova_vision_pipeline.py: The heart of the system. Manages the CentroidTracker and the lifecycle of asynchronous recognition threads.
 
-#### `nove_face_rec.py`
-The heavy recognition engine utilizing `DeepFace` and `Facenet512`.
-* **How it works:** When called on a live crop, it forces `align=True` to mathematically straighten the face before extracting the embedding. It calculates Cosine Distance against the known database with a strict 0.4 threshold.
+🧠 Biometrics & Identity
+nova_pose_validator.py: A stateless geometry engine using MediaPipe FaceLandmarker to verify user poses in 3D space.
 
-### 3. Identity Management (The Brain)
-#### `nova_enrollment.py` (The Guided State Machine)
-Handles the addition of new faces asynchronously.
-* **How it works:** Acts as a state machine that verbally guides the user through a biometric scan. Features a **Visibility Validation Gate** that uses MediaPipe to ensure the camera can actually see a face before capturing a frame, resetting the timer if the face is lost. 
+nova_enrollment.py: A 5-step guided state machine that verbally directs users through the biometric enrollment process.
 
-#### `nove_face_encoder.py`
-Uses DeepFace (with forced alignment) to extract 512-dimensional embeddings for the newly captured images, appends them to `nova_brain.pkl`, and deletes the raw images to protect user privacy.
+nove_face_rec.py: DeepFace-powered recognizer using the Facenet512 model for high-accuracy embedding comparison.
 
-#### `nove_forget.py`
-Safely loads the `.pkl` brain, deletes the target's embeddings, and overwrites the file.
+🔊 Audio & Communication
+nova_audio.py: A 7-Rank Priority Queue with barge-in capabilities and rank-based cooldowns to prevent greeting spam.
 
-### 4. Audio & Voice Input
-#### `nova_audio.py` (The Voice Queue)
-A bulletproof, thread-safe Producer-Consumer queue for `pyttsx3`.
-* **Features:** 7-Rank hierarchy (1: Critical to 7: Low) with a 7-second Time-to-Live (TTL). Includes `pause_below_critical()` for instant voice barge-in and per-rank spam cooldowns (e.g., 10 seconds for Social greetings).
+nova_commands.py: A fuzzy-matching NLP engine with a strict Wake Word Gate (Lumo/Lumos) to filter ambient conversations.
 
-#### `nova_listener.py` (The Ear)
-A UDP socket server running on a background daemon thread (Port `65432`). Listens for JSON payloads and triggers the voice queue pause mechanisms upon receiving a command.
+🚀 Deployment Instructions
+Install Requirements:
+pip install opencv-python mediapipe deepface pyttsx3 numpy tf-keras SpeechRecognition
 
-#### `nova_commands.py` (The NLP Engine)
-A custom Natural Language Processor. Features the `_contains_wake_word()` gate to filter out background noise. Isolates keywords, extracts target entities, and returns structured intents (e.g., `INTENT_CONFIRM`, `INTENT_CANCEL`).
+Launch the System:
 
----
+Terminal 1: python main.py (Starts the Vision/CEO)
 
-## 🚀 How to Run
+Terminal 2: python mock_voice_client.py (Starts the "Ears")
 
-1. **Install Dependencies:**
-   Ensure you have Python 3.9+ installed.
-   ```bash
-   pip install opencv-python mediapipe deepface pyttsx3 numpy SpeechRecognition tf-keras
+Basic Commands:
 
-   Start the Main Vision Loop:
+"Lumo, Enroll [Name]"
 
-Bash
-python main.py
+"Lumo, Forget [Name]"
 
+"Lumo, Cancel"
 
-Start the Voice Client (In a separate terminal):
-Bash
-python mock_voice_client.py
-
-
-Usage:
-
-Speak into the mock client: "Lumo, enroll [Name]" to start the guided setup.
-
-Speak: "Lumo, forget [Name]" to delete them (requires confirmation).
-
-Speak: "Lumo, cancel" to stop any current action.
-
-Speak: "Lumo, quit" to shut down the system gracefully.
+Nova Team | 2026 Graduation Project
