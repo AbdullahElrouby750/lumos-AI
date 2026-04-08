@@ -19,8 +19,9 @@ class EnrollmentManager:
         ("Please look down a little.", "down"),
     ]
 
-    def __init__(self, voice_queue, wait_seconds=5.0, db_folder="face_db"):
+    def __init__(self, voice_queue, vision_pipeline=None, wait_seconds=5.0, db_folder="face_db"):
         self.voice_queue = voice_queue
+        self.vision_pipeline = vision_pipeline # NEW
         self.wait_seconds = wait_seconds
         self.db_folder = db_folder
         self.active = False
@@ -121,6 +122,11 @@ class EnrollmentManager:
         try:
             self.voice_queue.speak("Building enrollment database.", VoiceQueue.PRIORITY_INFO)
             build_nova_brain(name)
+
+            # NEW: Trigger the hot-reload
+            if self.vision_pipeline:
+                self.vision_pipeline.hot_reload()
+
             self.voice_queue.speak("Enrollment database updated.", VoiceQueue.PRIORITY_INFO)
         except Exception as e:
             print(f"Enrollment build error: {e}")

@@ -24,6 +24,19 @@ class VisionPipeline:
         self.name_cooldowns = {}
         self.unknown_timers = {} # Tracks when a face was labeled "Unknown"
         self.COOLDOWN_TIME = 120.0
+        
+    def hot_reload(self):
+        """Forces the recognizer to reload the brain and wipes the pipeline's short-term memory."""
+        print("[VisionPipeline] Hot-reload triggered. Wiping short-term memory...")
+        self.recognizer.load_brain() # Reload the hard drive
+        
+        # Re-assign dictionaries to instantly wipe the cache (Thread-safe in Python)
+        self.recognition_results = {}
+        self.temporal_votes = {}
+        self.recognized_ids = set()
+        self.unknown_timers = {}
+        self.name_cooldowns = {}
+        self.alerted_approaching_ids = {}
 
     def process_frame(self, frame, current_time):
         """Process a single frame: detect, track, recognize, alert."""
@@ -117,7 +130,7 @@ class VisionPipeline:
                         )
                         self.name_cooldowns[name] = current_time
                     self.recognized_ids.add(face_id)
-                    self.alerted_approaching_ids.pop(face_id, None)
+                    
 
                 if name != "Unknown" and face_id in self.recognized_ids:
                     # 1. ALWAYS update the Jitter Buffer for recognized faces
@@ -142,10 +155,6 @@ class VisionPipeline:
                                 # Lock it with the current timestamp!
                                 self.alerted_approaching_ids[face_id] = current_time 
                                 self.bbox_history_buffer[face_id] = [] # Clear the jitter buffer after a warning to prevent multiple warnings from the same approach
-                    else:
-                        # If they leave the collision zone, instantly remove the lock
-                        # self.alerted_approaching_ids.pop(face_id, None)
-                        print(f"DEBUG: {name} (ID:{face_id}) left the collision zone, resetting alert lock.")
                 else:
                     self.alerted_approaching_ids.pop(face_id, None)
 
@@ -171,7 +180,7 @@ class VisionPipeline:
                 self.temporal_votes.pop(fid, None)
                 self.bbox_history_buffer.pop(fid, None) # NEW: Clean up jitter buffer
                 self.alerted_approaching_ids.pop(fid, None) # CHANGED: Now uses .pop since it's a dict
-                self.unknown_timers.pop(face_id, None) # NEW: Clean up unknown timer
+                self.unknown_timers.pop(fid, None) # NEW: Clean up unknown timer
 
         # Draw collision zone lines
         zone_left = int(frame_width * 0.3)

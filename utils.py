@@ -204,7 +204,7 @@ def is_bbox_expanding(bbox_current, bbox_history_list, threshold=10):
     return (current_width - older_avg) > threshold
 
 
-def process_command(command, enrollment_manager, voice_queue, quit_flag):
+def process_command(command, enrollment_manager, voice_queue, quit_flag, vision_pipeline=None):
 
 
     intent = command.get("intent")
@@ -218,6 +218,11 @@ def process_command(command, enrollment_manager, voice_queue, quit_flag):
             if intent == INTENT_CONFIRM:
                 names_stored = get_names_from_PK()
                 result = forget_person(pending_forget_name, names_stored)
+
+                # NEW: Trigger the hot-reload
+                if vision_pipeline:
+                    vision_pipeline.hot_reload()
+
                 voice_queue.speak(result, voice_queue.PRIORITY_FEEDBACK)
                 pending_forget_name = None  # Reset state
                 return

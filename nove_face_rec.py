@@ -22,19 +22,12 @@ class FaceRecognizer:
         self.facenet_model = None
         self.KNOWN_WIDTH = 14.0  # cm
         self.FOCAL_LENGTH = 678.57  # Preserved calibrated value
+        self.brain_file = brain_file
+        
+        # 1. Load brain using the new hot-reload method
+        self.load_brain()
 
-        # Load brain
-        try:
-            if os.path.exists(brain_file):
-                with open(brain_file, "rb") as f:
-                    self.known_faces = pickle.load(f)
-                print(f"Loaded {len(self.known_faces)} known faces from the brain.")
-            else:
-                print("Brain file not found. No known faces loaded.")
-        except Exception as e:
-            print(f"Error loading brain: {e}")
-
-        # Initialize detector
+        # 2. Initialize detector
         try:
             base_options = python.BaseOptions(model_asset_path=model_path)
             options = vision.FaceDetectorOptions(base_options=base_options)
@@ -42,11 +35,28 @@ class FaceRecognizer:
         except Exception as e:
             print(f"Error initializing detector: {e}")
 
-        # Load Facenet model
+        # 3. Initialize FaceNet
         try:
             self.facenet_model = DeepFace.build_model("Facenet512")
+            print("Facenet512 model initialized.")
         except Exception as e:
-            print(f"Error loading Facenet model: {e}")
+            print(f"Error initializing Facenet512: {e}")
+
+    # --- NEW METHOD: THE HOT RELOAD ---
+    def load_brain(self):
+        """Reads the .pkl file from the hard drive and overwrites RAM."""
+        try:
+            if os.path.exists(self.brain_file):
+                with open(self.brain_file, "rb") as f:
+                    self.known_faces = pickle.load(f)
+                print(f"[FaceRecognizer] Hot-Reloaded {len(self.known_faces)} known faces.")
+            else:
+                self.known_faces = {}
+                print("[FaceRecognizer] Brain file not found. Cleared memory.")
+        except Exception as e:
+            print(f"[FaceRecognizer] Error reloading brain: {e}")
+
+
 
     def recognize_face_crop(self, face_crop):
         """

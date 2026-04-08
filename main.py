@@ -42,7 +42,7 @@ def main():
     command_listener = CommandListener(command_queue, voice_queue)
     command_listener.start()
 
-    enrollment_manager = EnrollmentManager(voice_queue)
+    enrollment_manager = EnrollmentManager(voice_queue, vision_pipeline=vision_pipeline)
 
     last_time = 0
     quit_flag = [False]
@@ -64,7 +64,7 @@ def main():
             try:
                 while True:
                     command = command_queue.get_nowait()
-                    process_command(command, enrollment_manager, voice_queue, quit_flag)
+                    process_command(command, enrollment_manager, voice_queue, quit_flag, vision_pipeline=vision_pipeline)
             except Empty:
                 pass
 
