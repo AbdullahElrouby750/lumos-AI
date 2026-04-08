@@ -58,7 +58,8 @@ def main():
             if not success:
                 print("Failed to read frame from camera.")
                 break
-
+            
+            frame = cv2.flip(frame, 1)
             enrollment_manager.update(frame, current_time)
 
             try:

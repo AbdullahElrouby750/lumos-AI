@@ -1,12 +1,11 @@
 import os
 import threading
 import time
-from nova_face_detector import FaceDetector
 from nova_audio import VoiceQueue
 from nove_face_encoder import build_nova_brain
+from nova_pose_validator import PoseValidator
 import re
 import cv2
-import mediapipe as mp
 
 class EnrollmentManager:
     """Guided enrollment state machine that captures 5 pose frames without blocking."""
@@ -30,7 +29,7 @@ class EnrollmentManager:
         self.step_started = False
         self.step_saved = False
         self.step_start_time = 0.0
-        self.detector = FaceDetector()
+        self.validator = PoseValidator()
         self.last_warning_time = 0.0
         os.makedirs(self.db_folder, exist_ok=True)
 
@@ -67,29 +66,22 @@ class EnrollmentManager:
             return
 
         if not self.step_saved:
-            # 2. VALIDATION GATE: Check if a face is actually there!
-
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            detection_result = self.detector.detect(mp_image)
-
-            # If no face is detected, reset the 3-second timer and warn the user
-            if not detection_result or len(detection_result.detections) == 0:
-                self.step_start_time = current_time # Reset timer!
-                if current_time - self.last_warning_time > 3.0:
-                    self.voice_queue.speak("I can't see your face clearly. Please face the camera.", VoiceQueue.PRIORITY_SYSTEM)
-                    self.last_warning_time = current_time
-                return
-
-            # 3. If face is detected, proceed with the timer
+            # 2. VALIDATION GATE: Check pose at timer expiration
             if current_time - self.step_start_time >= self.wait_seconds:
-                self._save_frame(frame)
-                self.step_saved = True
-                self.step_index += 1
-
-                if self.step_index >= len(self.STEPS):
-                    self._complete()
+                _, step_name = self.STEPS[self.step_index]
+                is_valid, feedback = self.validator.validate_pose(frame, step_name)
+                if is_valid:
+                    self._save_frame(frame)
+                    self.voice_queue.speak("Pose looks good!", VoiceQueue.PRIORITY_FEEDBACK)
+                    self.step_saved = True
+                    self.step_index += 1
+                    if self.step_index >= len(self.STEPS):
+                        self._complete()
+                    else:
+                        self.step_started = False
                 else:
-                    self.step_started = False
+                    self.step_start_time = current_time  # Reset timer
+                    self.voice_queue.speak(feedback, VoiceQueue.PRIORITY_SYSTEM)
     
     def cancel(self):
         """

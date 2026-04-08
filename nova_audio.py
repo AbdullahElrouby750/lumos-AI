@@ -151,7 +151,7 @@ class VoiceQueue:
             try:
                 self._is_speaking.set()
                 engine = pyttsx3.init()
-                engine.setProperty('rate', 200)
+                engine.setProperty('rate', 190)
                 engine.say(text)
                 engine.runAndWait()
                 del engine
