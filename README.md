@@ -1,67 +1,89 @@
-Lumos: Social Vision & Face Recognition (Nova Team)
-Current Release: Version 3.0 (The "Bulletproof" Production Release)
-V3 Milestone: Zero-crash concurrency, Anatomical-Relative Pose Math, and MediaPipe/DeepFace State Synchronization.
 
-👁️ Project Overview
-Lumos is a real-time assistive wearable AI for the visually impaired. It transforms raw video into social context, detecting faces, identifying individuals via Deep Learning, and managing spatial proximity alerts without ever dropping below 30 FPS.
 
-The V3 "Bulletproof" Standard
-Version 3.0 is engineered to survive the "chaos of the real world." Whether the camera is panning rapidly across a crowded room or being used in a dimly lit hallway, the system is designed to be mathematically stable and thread-safe.
+# Lumos: Assistive Wearable AI
 
-⚙️ V3 Architectural Breakthroughs
-1. Zero-Crash Concurrency (Thread-Safe Inference)
-The Single-Thread Ceiling: To prevent TensorFlow/DeepFace from "segfaulting" during rapid movement, V3 implements a BoundedSemaphore capped at 1 concurrent inference thread. This ensures the C++ backend never deadlocks.
+**Current Release: Version 3.1 (The "Nervous System" Update)** **Status:** Transitioning to a Distributed Edge-Server Architecture.
 
-Safe-Crop Protection: Implements an spatial boundary check that prevents the system from attempting to process "zero-pixel" or negative-coordinate crops when a face is at the edge of the frame.
+## 👁️ Project Overview
 
-State Locking: All shared dictionaries are protected by a global _state_lock to prevent Python "Dictionary Tearing" during background updates.
+Lumos is a real-time assistive wearable AI designed to provide environmental and social autonomy for the visually impaired. Unlike traditional assistive tools, Lumos uses a **Distributed Hub Model**:
 
-2. Anatomical-Relative Pose Math (T-Zone)
-Distance-Independent Validation: The V2 "hard-coded" thresholds were replaced in V3 with Face-Relative Scaling. Validation now compares the "Lip Gap" to the "Face Height," ensuring that mouth-occlusion checks work perfectly whether you are 1 or 5 meters away.
+* **The Eyes (Raspberry Pi 4):** Handles high-frequency computer vision, face recognition (Nova), and obstacle detection.
+* **The Voice (Mobile App):** Acts as the primary user interface, handling Text-to-Speech (TTS), GPS navigation, and high-level AI reasoning (Gemini).
+* **The Bridge (WebSocket):** A high-speed asynchronous connection over a mobile hotspot that ensures instant haptic and audio feedback.
 
-Laptop Perspective Fix: Thresholds for "Straight" poses were widened to 1.4/0.6 to accommodate the physical reality of laptop cameras looking upward at a user's face.
+---
 
-Two-Stage Temporal Filtering: Includes a Moving Average Buffer (5 frames) and a Consensus Gate (3 frames) to eliminate jitter in bad lighting.
+## 🚀 Key Features
 
-3. Acoustic Self-Awareness & Queue Management
-Talk-Back Filter: Using difflib.SequenceMatcher, Lumos listens to her own voice. If the microphone hears more than an 80% match to what she is currently speaking, the command is discarded to prevent "Self-Argument" loops.
+### 1. Social Vision & Identity (Nova Core)
 
-The "Vision Coma" Fix: Enrollment now triggers an is_paused state. This puts MediaPipe to sleep while the heavy DeepFace brain-build happens, preventing hardware starvation and ensuring the camera feed stays live.
+* **DeepFace Identification:** Recognizes known individuals using Facenet512 with anatomical pose validation.
+* **Proximity Awareness:** Tracks multiple individuals simultaneously, providing distance-relative spatial alerts.
+* **T-Zone Pose Math:** Mathematically verifies if a person is looking at the user before speaking, preventing unnecessary interruptions.
 
-📁 Core Logic Breakdown
-🛠️ The Orchestrators
-main.py (The CEO): Drives the 30 FPS loop, manages the OpenCV window, and handles manual keyboard overrides ('s', 'f', 'q').
+### 2. Safety & Scene Intelligence (Luma Integration)
 
-nova_vision_pipeline.py: The heart of the system. Manages the CentroidTracker and the lifecycle of asynchronous recognition threads.
+* **Obstacle Detection:** Real-time YOLO-based detection of cars, trip hazards, and crowds.
+* **Emergency Overrides:** Instant vocal and haptic alerts for fast-moving vehicles within a 4-meter radius.
+* **Gemini Scene Description:** Multi-modal AI that describes complex surroundings, such as "A cozy cafe with three people sitting to your left."
+* **OCR & Document Reading:** Extracting text from menus, signs, and labels via EasyOCR and Gemini fallbacks.
 
-🧠 Biometrics & Identity
-nova_pose_validator.py: A stateless geometry engine using MediaPipe FaceLandmarker to verify user poses in 3D space.
+### 3. Smart Navigation
 
-nova_enrollment.py: A 5-step guided state machine that verbally directs users through the biometric enrollment process.
+* **Turn-by-Turn Guidance:** Integration with OpenRouteService for pedestrian-optimized routing.
+* **Phone-Linked GPS:** Utilizes the high-precision GPS sensors of the user's smartphone via the Lumos mobile app.
 
-nove_face_rec.py: DeepFace-powered recognizer using the Facenet512 model for high-accuracy embedding comparison.
+---
 
-🔊 Audio & Communication
-nova_audio.py: A 7-Rank Priority Queue with barge-in capabilities and rank-based cooldowns to prevent greeting spam.
+## 🛠️ V3.1 Architectural Breakthroughs (The "Nervous System")
 
-nova_commands.py: A fuzzy-matching NLP engine with a strict Wake Word Gate (Lumo/Lumos) to filter ambient conversations.
+This version marks the shift from a monolithic application to an **Edge-Server model**, optimized specifically for the **Raspberry Pi 4**.
 
-🚀 Deployment Instructions
-Install Requirements:
-pip install opencv-python mediapipe deepface pyttsx3 numpy tf-keras SpeechRecognition
+### 1. Unified Asynchronous Backend
 
-Launch the System:
+* **FastAPI & Uvicorn:** Replaced traditional threading loops with an ASGI-native server handling both WebSockets and REST API on Port 5000.
+* **Zero-Config Discovery (mDNS):** Implemented Zeroconf/Bonjour discovery. The mobile app automatically finds `lumos.local` on the network without requiring a static IP.
 
-Terminal 1: python main.py (Starts the Vision/CEO)
+### 2. Hardware Offloading & Optimization
 
-Terminal 2: python mock_voice_client.py (Starts the "Ears")
+* **Vocal Offloading:** Text-to-Speech generation has been moved to the mobile app, saving significant CPU cycles and RAM on the Pi.
+* **RAM-Disk I/O (`/dev/shm`):** High-resolution captures for Gemini are stored in the Pi's RAM disk rather than the SD card, increasing speed and extending hardware lifespan.
+* **Event Multiplexing:** A single WebSocket pipe handles all communication using a structured JSON/MessagePack event system.
 
-Basic Commands:
+### 3. The Sync-to-Async Bridge
 
-"Lumo, Enroll [Name]"
+* **Thread-Safe Signaling:** Implemented an `asyncio.Queue` bridge that allows the synchronous Vision Pipeline to push detection events to the asynchronous network server without blocking the 30 FPS camera feed.
 
-"Lumo, Forget [Name]"
+---
 
-"Lumo, Cancel"
+## 📁 System Modules
 
-Nova Team | 2026 Graduation Project
+* **`nova_server.py`**: The FastAPI core managing real-time signaling.
+* **`nova_discovery.py`**: Handles mDNS service registration for "Zero-Touch" pairing.
+* **`nova_vision_pipeline.py`**: The "CEO" script managing the camera and AI workers.
+* **`brain_module.py`**: Interface for Gemini 1.5 Flash vision capabilities.
+* **`ORS.py` / `OCR.py**`: Specialized modules for navigation and text recognition.
+
+---
+
+## 📥 Deployment
+
+1. **Configure Hotspot:** Set your mobile phone to Hotspot mode.
+2. **Start the Server:**
+```bash
+python nova_server.py
+
+```
+
+
+3. **Launch Vision:**
+```bash
+python main.py
+
+```
+
+
+4. **Connect:** Open the Lumos Mobile App; it will automatically discover and pair with the glasses.
+
+**Nova & Luma Team | 2026 Graduation Project**
