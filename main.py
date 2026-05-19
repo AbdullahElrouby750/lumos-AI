@@ -3,12 +3,12 @@ import threading
 import time
 from queue import Empty, Queue
 
-from nova_audio import VoiceQueue
-from nova_listener import CommandListener
-from nova_enrollment import EnrollmentManager
-from nova_vision_pipeline import VisionPipeline
-from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
-from utils import calculate_fps, draw_text, process_command, handle_manual_input
+from src.core.nova_audio import VoiceQueue
+from src.modules.nova_listener import CommandListener
+from src.modules.nova_enrollment import EnrollmentManager
+from src.core.nova_vision_pipeline import VisionPipeline
+from src.core.nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
+from src.core.utils import calculate_fps, draw_text, process_command, handle_manual_input
 
 COMMAND_HOST = "127.0.0.1"
 COMMAND_PORT = 65432

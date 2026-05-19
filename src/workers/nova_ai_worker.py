@@ -12,11 +12,11 @@ import threading
 from pathlib import Path
 from typing import Any, Dict
 
-from brain_module import describe_scene
-from OCR import get_text_from_image
-from nova_audio import VoiceQueue
-from nova_network_models import BaseEvent, OCRResultEvent
-from nova_server import LumosServer
+from src.modules.brain_module import describe_scene
+from src.modules.OCR import get_text_from_image
+from src.core.nova_audio import VoiceQueue
+from src.network.nova_network_models import BaseEvent, OCRResultEvent
+from src.network.nova_server import LumosServer
 
 logger = logging.getLogger(__name__)
 

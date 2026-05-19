@@ -3,8 +3,8 @@ import time
 import math
 import difflib
 import random
-from nove_forget import forget_person, get_names_from_PK
-from nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT, INTENT_CANCEL, INTENT_CONFIRM, INTENT_DENY, INTENT_WAKE_ONLY
+from src.modules.nove_forget import forget_person, get_names_from_PK
+from src.core.nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT, INTENT_CANCEL, INTENT_CONFIRM, INTENT_DENY, INTENT_WAKE_ONLY
 
 # Constants (preserved from existing code)
 KNOWN_WIDTH = 14.0  # cm

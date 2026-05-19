@@ -17,14 +17,14 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
-from nova_discovery import LumosDiscovery
-from nova_network_models import BaseEvent, Event
+from src.network.nova_discovery import LumosDiscovery
+from src.network.nova_network_models import BaseEvent, Event
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Hardware-aware paths (Pi 4 optimized)
-BRAIN_FILE_PATH = Path("face_db") / "nova_brain.pkl"  # Local DB folder
+BRAIN_FILE_PATH = Path("data") / "face_db" / "nova_brain.pkl"  # Local DB folder
 SCENE_DIR_PATH = Path("/dev/shm")  # RAM disk for transient images
 LATEST_SCENE_FILE = SCENE_DIR_PATH / "latest_scene.jpg"
 

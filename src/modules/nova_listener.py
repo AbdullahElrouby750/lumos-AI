@@ -3,7 +3,7 @@ import json
 import socket
 import threading
 
-from nova_commands import parse_intent
+from src.core.nova_commands import parse_intent
 
 class CommandListener(threading.Thread):
     """Listens for local JSON voice commands on UDP and pushes them into a queue."""

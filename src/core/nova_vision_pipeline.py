@@ -2,9 +2,9 @@ import threading
 import time
 import cv2
 import mediapipe as mp
-from nova_face_detector import FaceDetector
-from nove_face_rec import FaceRecognizer
-from utils import (
+from src.modules.nova_face_detector import FaceDetector
+from src.modules.nove_face_rec import FaceRecognizer
+from src.core.utils import (
     CentroidTracker, is_in_collision_zone, is_bbox_expanding,
     draw_bounding_box, draw_text,
 )

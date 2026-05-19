@@ -1,9 +1,9 @@
 import os
 import threading
 import time
-from nova_audio import VoiceQueue
-from nove_face_encoder import build_nova_brain
-from nova_pose_validator import PoseValidator
+from src.core.nova_audio import VoiceQueue
+from src.modules.nove_face_encoder import build_nova_brain
+from src.modules.nova_pose_validator import PoseValidator
 import re
 import cv2
 

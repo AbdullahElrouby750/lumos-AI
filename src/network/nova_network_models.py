@@ -9,7 +9,7 @@ from typing import Any, Dict, Union
 from pydantic import BaseModel
 import time
 
-from nova_audio import VoiceQueue
+from src.core.nova_audio import VoiceQueue
 
 
 class BaseEvent(BaseModel):
