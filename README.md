@@ -45,20 +45,27 @@ lumos-v3/
 │       ├── brain_module.py
 │       └── OCR.py
 └── main.py                     # Entry Point
+```
 
 🚀 Deployment Instructions
 1. Environment Setup
 Ensure you are using Python 3.10+ and install the dependencies:
 
+```py
 python -m venv .venv
 source .venv/bin/activate  # (or .venv\Scripts\activate on Windows)
 pip install -r requirements.txt
+```
 
 2. Download YOLO Weights
 Fetch the required edge model:
+```py
 python -c "from ultralytics import YOLO; YOLO('models/yolo11n.pt')"
+```
 
 3. Launch the System
+```py
 python main.py
+```
 
 Nova & Lumos Team | 2026 Graduation Project
