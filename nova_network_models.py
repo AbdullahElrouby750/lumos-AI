@@ -9,6 +9,8 @@ from typing import Any, Dict, Union
 from pydantic import BaseModel
 import time
 
+from nova_audio import VoiceQueue
+
 
 class BaseEvent(BaseModel):
     """
@@ -20,11 +22,22 @@ class BaseEvent(BaseModel):
     type: str
     payload: Dict[str, Any]
     timestamp: float
+    priority: int = VoiceQueue.PRIORITY_INFO
 
     @classmethod
-    def create(cls, event_type: str, payload: Dict[str, Any]) -> 'BaseEvent':
-        """Factory method to create an event with current timestamp."""
-        return cls(type=event_type, payload=payload, timestamp=time.time())
+    def create(
+        cls,
+        event_type: str,
+        payload: Dict[str, Any],
+        priority: int = VoiceQueue.PRIORITY_INFO,
+    ) -> 'BaseEvent':
+        """Factory method to create an event with current timestamp and voice priority."""
+        return cls(
+            type=event_type,
+            payload=payload,
+            timestamp=time.time(),
+            priority=priority,
+        )
 
 
 class SocialAlertEvent(BaseEvent):

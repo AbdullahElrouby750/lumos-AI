@@ -1,0 +1,32 @@
+{
+  "danger_objects": [
+    "car",
+    "truck",
+    "bus",
+    "motorcycle",
+    "bicycle",
+    "fire hydrant"
+  ],
+  "trip_hazards": [
+    "chair",
+    "bench",
+    "potted plant",
+    "suitcase",
+    "backpack",
+    "box",
+    "person",
+    "dog",
+    "cat",
+    "stairs",
+    "step",
+    "shopping cart",
+    "stroller"
+  ],
+  "danger_distance": 4.0,
+  "hazard_distance": 1.8,
+  "hazard_cooldown": 4.0,
+  "crowd_threshold": 5,
+  "detection_confidence": 0.35,
+  "max_fps": 2.0,
+  "queue_size": 4
+}
