@@ -1,89 +1,64 @@
-
-
 # Lumos: Assistive Wearable AI
-
-**Current Release: Version 3.1 (The "Nervous System" Update)** **Status:** Transitioning to a Distributed Edge-Server Architecture.
+**Current Release: Version 3.1 (The "Distributed Brain" Update)** **Status:** Transitioning to a Decoupled Edge-Server Architecture optimized for Raspberry Pi 4.
 
 ## 👁️ Project Overview
+Lumos is a real-time assistive wearable AI designed to provide environmental and social autonomy for the visually impaired. It transforms raw video into social context, detecting faces, identifying individuals, reading text, and managing spatial proximity alerts without ever dropping below 30 FPS.
 
-Lumos is a real-time assistive wearable AI designed to provide environmental and social autonomy for the visually impaired. Unlike traditional assistive tools, Lumos uses a **Distributed Hub Model**:
+## ⚙️ V3.1 Architectural Breakthroughs
 
-* **The Eyes (Raspberry Pi 4):** Handles high-frequency computer vision, face recognition (Nova), and obstacle detection.
-* **The Voice (Mobile App):** Acts as the primary user interface, handling Text-to-Speech (TTS), GPS navigation, and high-level AI reasoning (Gemini).
-* **The Bridge (WebSocket):** A high-speed asynchronous connection over a mobile hotspot that ensures instant haptic and audio feedback.
+Version 3.1 solves the "Blocking Problem" of heavy AI models on edge hardware by splitting continuous reflexes and deep thinking into completely isolated, thread-safe workers.
 
----
+### 1. The Decoupled Worker Architecture
+* **The Continuous Reflex (YOLOv11):** Obstacle and vehicle detection runs in a dedicated daemon thread. It consumes frames via a bounded queue and uses a semaphore lock, ensuring it never throttles the main camera feed.
+* **The On-Demand Brain (Gemini 1.5 & EasyOCR):** Heavy cloud and localized AI models sit entirely asleep until triggered by explicit user intents (e.g., `INTENT_SCENE`). If the mobile hotspot drops, strict timeouts catch the failure gracefully instead of freezing the system.
+* **Zero-SD Card Wear (RAM Disk):** High-resolution image captures for Gemini and OCR are piped directly to `/dev/shm/latest_scene.jpg` (RAM), ensuring zero read/write degradation to the physical SD card.
 
-## 🚀 Key Features
-
-### 1. Social Vision & Identity (Nova Core)
-
-* **DeepFace Identification:** Recognizes known individuals using Facenet512 with anatomical pose validation.
-* **Proximity Awareness:** Tracks multiple individuals simultaneously, providing distance-relative spatial alerts.
-* **T-Zone Pose Math:** Mathematically verifies if a person is looking at the user before speaking, preventing unnecessary interruptions.
-
-### 2. Safety & Scene Intelligence (Luma Integration)
-
-* **Obstacle Detection:** Real-time YOLO-based detection of cars, trip hazards, and crowds.
-* **Emergency Overrides:** Instant vocal and haptic alerts for fast-moving vehicles within a 4-meter radius.
-* **Gemini Scene Description:** Multi-modal AI that describes complex surroundings, such as "A cozy cafe with three people sitting to your left."
-* **OCR & Document Reading:** Extracting text from menus, signs, and labels via EasyOCR and Gemini fallbacks.
-
-### 3. Smart Navigation
-
-* **Turn-by-Turn Guidance:** Integration with OpenRouteService for pedestrian-optimized routing.
-* **Phone-Linked GPS:** Utilizes the high-precision GPS sensors of the user's smartphone via the Lumos mobile app.
+### 2. The Unified Nervous System
+* **FastAPI & WebSockets:** Replaced synchronous loops with an ASGI-native server handling high-speed JSON event multiplexing.
+* **Priority-Ranked Signaling:** All system alerts are mapped to a unified 7-rank priority queue (from `PRIORITY_CRITICAL` for fast-moving vehicles to `PRIORITY_LOW` for background scene descriptions).
+* **RAM-Cached Hot Reloads:** Configuration for danger distances and hazards is read once into a memory cache from `hazards_config.json`, allowing for instantaneous parameter updates without disk I/O during the 30 FPS loop.
 
 ---
 
-## 🛠️ V3.1 Architectural Breakthroughs (The "Nervous System")
+## 📁 Production Folder Structure
 
-This version marks the shift from a monolithic application to an **Edge-Server model**, optimized specifically for the **Raspberry Pi 4**.
+```text
+lumos-v3/
+├── config/                     # System configuration
+│   ├── hazards_config.json     # Danger thresholds and objects
+│   └── nova_config_manager.py  # RAM Cache singleton
+├── data/                       # Persistent localized data
+│   └── face_db/                # DeepFace embedded identities
+├── models/                     # Heavy AI weights
+│   └── yolo11n.pt              # Ultralytics model
+├── src/
+│   ├── core/                   # The Pipeline & Base Logic
+│   │   ├── nova_vision_pipeline.py # The CEO (Main Loop)
+│   │   └── nova_commands.py        # Intents & NLP Logic
+│   ├── network/                # FastAPI & Pydantic
+│   │   ├── nova_server.py
+│   │   └── nova_network_models.py
+│   ├── workers/                # Isolated Thread Workers
+│   │   ├── nova_yolo_worker.py
+│   │   └── nova_ai_worker.py
+│   └── modules/                # Specialized Task Logic
+│       ├── brain_module.py
+│       └── OCR.py
+└── main.py                     # Entry Point
 
-### 1. Unified Asynchronous Backend
+🚀 Deployment Instructions
+1. Environment Setup
+Ensure you are using Python 3.10+ and install the dependencies:
 
-* **FastAPI & Uvicorn:** Replaced traditional threading loops with an ASGI-native server handling both WebSockets and REST API on Port 5000.
-* **Zero-Config Discovery (mDNS):** Implemented Zeroconf/Bonjour discovery. The mobile app automatically finds `lumos.local` on the network without requiring a static IP.
+python -m venv .venv
+source .venv/bin/activate  # (or .venv\Scripts\activate on Windows)
+pip install -r requirements.txt
 
-### 2. Hardware Offloading & Optimization
+2. Download YOLO Weights
+Fetch the required edge model:
+python -c "from ultralytics import YOLO; YOLO('models/yolo11n.pt')"
 
-* **Vocal Offloading:** Text-to-Speech generation has been moved to the mobile app, saving significant CPU cycles and RAM on the Pi.
-* **RAM-Disk I/O (`/dev/shm`):** High-resolution captures for Gemini are stored in the Pi's RAM disk rather than the SD card, increasing speed and extending hardware lifespan.
-* **Event Multiplexing:** A single WebSocket pipe handles all communication using a structured JSON/MessagePack event system.
-
-### 3. The Sync-to-Async Bridge
-
-* **Thread-Safe Signaling:** Implemented an `asyncio.Queue` bridge that allows the synchronous Vision Pipeline to push detection events to the asynchronous network server without blocking the 30 FPS camera feed.
-
----
-
-## 📁 System Modules
-
-* **`nova_server.py`**: The FastAPI core managing real-time signaling.
-* **`nova_discovery.py`**: Handles mDNS service registration for "Zero-Touch" pairing.
-* **`nova_vision_pipeline.py`**: The "CEO" script managing the camera and AI workers.
-* **`brain_module.py`**: Interface for Gemini 1.5 Flash vision capabilities.
-* **`ORS.py` / `OCR.py**`: Specialized modules for navigation and text recognition.
-
----
-
-## 📥 Deployment
-
-1. **Configure Hotspot:** Set your mobile phone to Hotspot mode.
-2. **Start the Server:**
-```bash
-python nova_server.py
-
-```
-
-
-3. **Launch Vision:**
-```bash
+3. Launch the System
 python main.py
 
-```
-
-
-4. **Connect:** Open the Lumos Mobile App; it will automatically discover and pair with the glasses.
-
-**Nova & Luma Team | 2026 Graduation Project**
+Nova & Lumos Team | 2026 Graduation Project

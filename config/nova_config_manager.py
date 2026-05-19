@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = Path("config") / "hazards_config.json"
+# This guarantees it always finds the JSON right next to the python script
+CONFIG_PATH = Path(__file__).parent / "hazards_config.json"
 
 
 class HazardConfig(BaseModel):

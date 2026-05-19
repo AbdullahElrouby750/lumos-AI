@@ -16,13 +16,13 @@ from typing import Any
 from ultralytics import YOLO
 
 from src.core.nova_audio import VoiceQueue
-from src.config.nova_config_manager import HazardConfig, NovaConfigManager
+from config.nova_config_manager import HazardConfig, NovaConfigManager
 from src.network.nova_network_models import SocialAlertEvent
 from src.network.nova_server import LumosServer
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_PATH = Path("models/yolov8n.pt")
+DEFAULT_MODEL_PATH = Path("models/yolo11n.pt")
 
 
 class NovaYoloWorker:
