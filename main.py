@@ -4,9 +4,9 @@ import time
 from src.core.nova_audio import get_voice_queue
 from src.core.nova_vision_pipeline import VisionPipeline
 from src.core.utils import draw_text, calculate_fps
-from src.modules.nova_enrollment import EnrollmentManager
 from src.network.nova_server import LumosServer
 from src.workers.nova_ai_worker import NovaAIWorker
+from src.workers.nova_enrollment_worker import NovaEnrollmentWorker
 from src.workers.nova_yolo_worker import NovaYoloWorker
 
 
@@ -17,6 +17,7 @@ def main():
 
     yolo_worker = NovaYoloWorker(server)
     ai_worker = NovaAIWorker(server)
+    enrollment_worker = NovaEnrollmentWorker(server)
 
     voice_queue = get_voice_queue()
     voice_queue.set_server(server)
@@ -26,6 +27,7 @@ def main():
         server=server,
         yolo_worker=yolo_worker,
         ai_worker=ai_worker,
+        enrollment_worker=enrollment_worker,
     )
     server.set_command_callback(vision_pipeline.on_command_received)
     if vision_pipeline.detector.detector is None or vision_pipeline.recognizer.facenet_model is None:
@@ -52,8 +54,6 @@ def main():
         ai_worker.stop()
         return
 
-    enrollment_manager = EnrollmentManager(voice_queue, vision_pipeline=vision_pipeline)
-
     last_time = 0
     quit_flag = [False]
 
@@ -68,8 +68,6 @@ def main():
                 break
             
             frame = cv2.flip(frame, 1)
-            enrollment_manager.update(frame, current_time)
-
             frame = vision_pipeline.process_frame(frame, current_time)
 
             fps = calculate_fps(current_time, last_time)
@@ -89,6 +87,7 @@ def main():
         server.stop()
         yolo_worker.stop()
         ai_worker.stop()
+        enrollment_worker.stop()
         voice_queue.speak("Lumos shutting down", voice_queue.PRIORITY_FEEDBACK)
         time.sleep(2)
         voice_queue.stop()

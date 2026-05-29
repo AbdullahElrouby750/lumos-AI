@@ -42,11 +42,13 @@ class VisionPipeline:
     the worker thread (deletes itself in finally) touch it concurrently.
     """
 
-    def __init__(self, voice_queue, server=None, ai_worker=None, yolo_worker=None):
+    def __init__(self, voice_queue, server=None, ai_worker=None, yolo_worker=None, enrollment_worker=None):
         self.voice_queue = voice_queue
         self.server = server
         self.ai_worker = ai_worker
         self.yolo_worker = yolo_worker
+        self.enrollment_worker = enrollment_worker
+        self.is_enrolling = False
         self._command_inbox: queue.Queue[dict] = queue.Queue()
         self.detector = FaceDetector()
         self.recognizer = FaceRecognizer()
@@ -112,10 +114,21 @@ class VisionPipeline:
                     else:
                         print("[VisionPipeline] Warning: AI Worker not initialized.")
 
-                # 2. Route to Enrollment (Will wire up later)
+                # 2. Route to Enrollment
                 elif intent == INTENT_ENROLL:
-                    print("[VisionPipeline] Triggering Enrollment Protocol...")
-                    
+                    target_name = command.get("target_name")
+                    if self.enrollment_worker and target_name:
+                        self.is_enrolling = True
+                        try:
+                            self.enrollment_worker.start_session(
+                                target_name,
+                                on_complete=self._on_enrollment_done,
+                            )
+                        except TypeError:
+                            self.enrollment_worker.start_session(target_name, on_complete=self._on_enrollment_done)
+                    else:
+                        print("[VisionPipeline] Enrollment request missing target_name or worker not configured.")
+
                 # 3. Route to Forget (Will wire up later)
                 elif intent == INTENT_FORGET:
                     print("[VisionPipeline] Triggering Forget Protocol...")
@@ -129,6 +142,11 @@ class VisionPipeline:
                 print(f"[VisionPipeline] Command routing error: {e}")
             finally:
                 self._command_inbox.task_done()
+
+    def _on_enrollment_done(self, target_name: str):
+        print(f"[VisionPipeline] Enrollment completed for {target_name}. Reloading brain...")
+        self.hot_reload()
+        self.is_enrolling = False
 
     def hot_reload(self):
         """Reload brain from disk and wipe short-term memory atomically."""
@@ -154,7 +172,20 @@ class VisionPipeline:
 
         self.process_inbox()
         if self.yolo_worker:
-            self.yolo_worker.enqueue_frame(frame)
+            self.yolo_worker.enqueue_frame(frame.copy())
+
+        if self.is_enrolling and self.enrollment_worker:
+            self.enrollment_worker.enqueue_frame(frame.copy())
+            cv2.putText(
+                frame,
+                "ENROLLMENT IN PROGRESS",
+                (20, 80),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 255, 255),
+                2,
+            )
+            return frame
 
         mp_image = mp.Image(
             image_format=mp.ImageFormat.SRGB,
