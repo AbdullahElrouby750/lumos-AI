@@ -1,71 +1,101 @@
-# Lumos: Assistive Wearable AI
-**Current Release: Version 3.1 (The "Distributed Brain" Update)** **Status:** Transitioning to a Decoupled Edge-Server Architecture optimized for Raspberry Pi 4.
 
-## 👁️ Project Overview
-Lumos is a real-time assistive wearable AI designed to provide environmental and social autonomy for the visually impaired. It transforms raw video into social context, detecting faces, identifying individuals, reading text, and managing spatial proximity alerts without ever dropping below 30 FPS.
 
-## ⚙️ V3.1 Architectural Breakthroughs
+# Lumos AI — Wearable Assistive Ecosystem
 
-Version 3.1 solves the "Blocking Problem" of heavy AI models on edge hardware by splitting continuous reflexes and deep thinking into completely isolated, thread-safe workers.
+Lumos is an advanced, headless AI-driven edge wearable ecosystem designed to provide comprehensive situational awareness, spatial navigation, and social integration for visually impaired individuals. 
 
-### 1. The Decoupled Worker Architecture
-* **The Continuous Reflex (YOLOv11):** Obstacle and vehicle detection runs in a dedicated daemon thread. It consumes frames via a bounded queue and uses a semaphore lock, ensuring it never throttles the main camera feed.
-* **The On-Demand Brain (Gemini 1.5 & EasyOCR):** Heavy cloud and localized AI models sit entirely asleep until triggered by explicit user intents (e.g., `INTENT_SCENE`). If the mobile hotspot drops, strict timeouts catch the failure gracefully instead of freezing the system.
-* **Zero-SD Card Wear (RAM Disk):** High-resolution image captures for Gemini and OCR are piped directly to `/dev/shm/latest_scene.jpg` (RAM), ensuring zero read/write degradation to the physical SD card.
+Built on a distributed asymmetric thread-safe architecture, Lumos transforms a wearable processor (such as a Raspberry Pi 4) into a silent local node that handles low-latency sensory processing (30 FPS) while isolating heavy intelligence operations into autonomous background worker threads, communicating seamlessly with a mobile client via structured network protocol streams.
 
-### 2. The Unified Nervous System
-* **FastAPI & WebSockets:** Replaced synchronous loops with an ASGI-native server handling high-speed JSON event multiplexing.
-* **Priority-Ranked Signaling:** All system alerts are mapped to a unified 7-rank priority queue (from `PRIORITY_CRITICAL` for fast-moving vehicles to `PRIORITY_LOW` for background scene descriptions).
-* **RAM-Cached Hot Reloads:** Configuration for danger distances and hazards is read once into a memory cache from `hazards_config.json`, allowing for instantaneous parameter updates without disk I/O during the 30 FPS loop.
+
+## 🏗️ Architectural Core: The Asymmetric Pipeline
+
+Lumos rejects the traditional monolithic loop architecture. It utilizes a central orchestrator (`main.py`) acting as the "CEO," managing an interconnected system of non-blocking workers and networks. 
+
+
+
+```
+                   ┌─────────────────────────┐
+                   │  Mobile Client (Phone)  │
+                   └────────────┬────────────┘
+                                │  ▲
+                     WebSockets │  │ REST API
+                                ▼  │
+
+┌────────────────────────────────────┴─────────────────────────────────────┐
+│ Lumos Headless Server (FastAPI Core)                                     │
+└─────────────────┬──────────────────────────────────────▲─────────────────┘
+│                                      │
+┌─────────────────▼──────────────────────────────────────┴─────────────────┐
+│ VisionPipeline (The CEO Core Orchestrator)                               │
+└───────┬──────────────────────┬──────────────────────┬─────────────▲──────┘
+│                      │                      │             │
+▼ Enqueue Frame        ▼ Enqueue Command      ▼ Enqueue     │ Callback
+┌───────────────┐      ┌───────────────┐      ┌───────────────┐     │ (Hot-Reload)
+│  YOLO Worker  │      │   AI Worker   │      │  Enrollment   │─────┘
+│   (Hazards)   │      │  (Scene/OCR)  │      │    Worker     │
+└───────────────┘      └───────────────┘      └───────────────┘
+
+```
+
+### 1. The Nervous System (`src/network/`)
+* **`LumosServer`**: An asynchronous FastAPI server core managed on Uvicorn. It multiplexes real-time bidirectional WebSocket event channels (`/ws`) and exposes high-speed RESTful API streams (`/api/v1/scene`, `/api/v1/brain`) utilizing a local memory RAM disk (`/dev/shm`) to prevent flash storage degradation.
+* **`LumosDiscovery`**: Zero-touch networking powered by mDNS/Zeroconf. It allows the wearable node to automatically broadcast its coordinates on the local network, enabling instant pairing with the companion mobile application without user configuration.
+
+### 2. The Reflex Loop (`src/core/`)
+* **`VisionPipeline`**: The primary camera driver and feature dispatcher running synchronously at 30 FPS. It combines high-speed localized facial landmark tracking with tactical tracking constraints to compute depth and relative velocities.
+* **`VoiceQueue`**: A thread-safe, 7-rank priority output queue implementing proactive barge-in overrides, Time-To-Live (TTL) packet pruning, and per-rank cooling windows to prevent alert fatigue. It instantly serializes text arrays into networking data payloads, deferring the physical Text-to-Speech execution to the client hardware.
+
+### 3. Asynchronous Worker Daemons (`src/workers/`)
+* **`NovaYoloWorker`**: An isolated, continuous object and hazard detection thread. It evaluates spatial threat matrices (e.g., expanding collision vectors, drop-offs) without penalizing the target camera frame rate.
+* **`NovaAIWorker`**: A state-machine tracking high-level intent. It handles complex, high-latency multimodal vision tasks like broad scene descriptions and optical character recognition (OCR) by executing remote API calls completely off the main thread.
+* **`NovaEnrollmentWorker`**: A dedicated face enrollment state machine. It handles multi-axis head pose tracking and validation, running heavy DeepFace database mathematical representations asynchronously, then hot-reloads the master brain via a thread-safe feedback callback.
 
 ---
 
-## 📁 Production Folder Structure
+## 🧠 Key Capability Subsystems (`src/modules/`)
 
-```text
-lumos-v3/
-├── config/                     # System configuration
-│   ├── hazards_config.json     # Danger thresholds and objects
-│   └── nova_config_manager.py  # RAM Cache singleton
-├── data/                       # Persistent localized data
-│   └── face_db/                # DeepFace embedded identities
-├── models/                     # Heavy AI weights
-│   └── yolo11n.pt              # Ultralytics model
-├── src/
-│   ├── core/                   # The Pipeline & Base Logic
-│   │   ├── nova_vision_pipeline.py # The CEO (Main Loop)
-│   │   └── nova_commands.py        # Intents & NLP Logic
-│   ├── network/                # FastAPI & Pydantic
-│   │   ├── nova_server.py
-│   │   └── nova_network_models.py
-│   ├── workers/                # Isolated Thread Workers
-│   │   ├── nova_yolo_worker.py
-│   │   └── nova_ai_worker.py
-│   └── modules/                # Specialized Task Logic
-│       ├── brain_module.py
-│       └── OCR.py
-└── main.py                     # Entry Point
-```
+* **Facial Analysis & Biometrics (`nove_face_rec`, `nova_face_detector`)**: Leverages real-time MediaPipe face landmark configurations coupled with an asynchronous DeepFace `Facenet512` model processing pipeline. Tracks persistent identities via custom Centroid Tracking algorithms to isolate target features.
+* **Pose & Orientation Gating (`nova_pose_validator`)**: Utilizes moving-average smoothing matrices and consensus frame counters to validate head trajectories (Pitch, Yaw, Roll) during interactive setup sequences.
+* **Brain Topography (`brain_module`, `nove_face_encoder`)**: Compiles individual biometric matrices into a local serialized storage cluster (`nova_brain.pkl`) while keeping standard image sets ephemeral.
+* **Tactical Navigation (`hazards`)**: Processes configuration maps (`hazards_config.json`) specifying horizontal collision ranges to identify nearby obstacles, vehicles, or topological drops.
 
-🚀 Deployment Instructions
-1. Environment Setup
-Ensure you are using Python 3.10+ and install the dependencies:
+---
 
-```py
-python -m venv .venv
-source .venv/bin/activate  # (or .venv\Scripts\activate on Windows)
-pip install -r requirements.txt
-```
+## 🛠️ Thread Safety & Memory Design
 
-2. Download YOLO Weights
-Fetch the required edge model:
-```py
-python -c "from ultralytics import YOLO; YOLO('models/yolo11n.pt')"
-```
+Lumos enforces strict architectural rules to maximize battery and thermal efficiency on low-power edge units like the Raspberry Pi 4:
 
-3. Launch the System
-```py
+1.  **Memory Decoupling**: Frames sent to background worker threads are explicitly deep-copied (`frame.copy()`). This prevents memory collisions where the main thread modifies pixel arrays while background workers execute matrix multiplications.
+2.  **Serialized Mutation**: Core pipeline dictionaries (`recognition_results`, `temporal_votes`, `unknown_timers`) are owned solely by the main execution stream. Any auxiliary thread modifications must serialize through a state synchronization lock (`self._state_lock`).
+3.  **Zero Thread Leaks**: All daemon engines implement standard threading events (`_stop_event`). When a termination vector (`INTENT_QUIT` or manual kill switch) is received, the system enforces sequential teardown closures across all network ports and C++ memory allocations.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+* Python 3.10+
+* OpenCV dependencies (`libgl1-mesa-glx`)
+* Hardware video device mapped to `/dev/video0`
+
+### Installation
+1.  Clone the repository down to your local directory:
+    ```bash
+    git clone [https://github.com/abdullahelrouby750/lumos-ai.git](https://github.com/abdullahelrouby750/lumos-ai.git)
+    cd lumos-ai
+    ```
+2.  Install the required dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+### Execution
+Boot the headless core processor:
+```bash
 python main.py
+
 ```
 
-Nova & Lumos Team | 2026 Graduation Project
+Upon execution, the server will open port `5000`, deploy mDNS broadcast markers, initialize local machine learning networks, and await structured incoming JSON payloads from the accompanying client interface.
+
+```
