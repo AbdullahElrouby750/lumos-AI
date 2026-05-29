@@ -1,3 +1,4 @@
+import queue
 import threading
 import time
 import cv2
@@ -7,6 +8,9 @@ from src.modules.nove_face_rec import FaceRecognizer
 from src.core.utils import (
     CentroidTracker, is_in_collision_zone, is_bbox_expanding,
     draw_bounding_box, draw_text,
+)
+from src.core.nova_commands import (
+    INTENT_SCENE, INTENT_TEXT, INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
 )
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
@@ -38,8 +42,12 @@ class VisionPipeline:
     the worker thread (deletes itself in finally) touch it concurrently.
     """
 
-    def __init__(self, voice_queue):
+    def __init__(self, voice_queue, server=None, ai_worker=None, yolo_worker=None):
         self.voice_queue = voice_queue
+        self.server = server
+        self.ai_worker = ai_worker
+        self.yolo_worker = yolo_worker
+        self._command_inbox: queue.Queue[dict] = queue.Queue()
         self.detector = FaceDetector()
         self.recognizer = FaceRecognizer()
         self.tracker = CentroidTracker(max_distance=200, max_disappeared=60)
@@ -72,6 +80,56 @@ class VisionPipeline:
 
     # ── Public helpers ────────────────────────────────────────────────────────
 
+    def on_command_received(self, command: dict) -> bool:
+        """
+        Acts as the direct callback for LumosServer. 
+        Drops the WebSocket command into the CEO's inbox safely.
+        """
+        try:
+            self._command_inbox.put_nowait(command)
+            return True
+        except queue.Full:
+            print(f"[VisionPipeline] Command inbox full, dropping command: {command}")
+            return False
+
+    def process_inbox(self):
+        """The Switchboard Router: Process all pending commands without waiting."""
+        while True:
+            try:
+                command = self._command_inbox.get_nowait()
+            except queue.Empty:
+                break
+
+            try:
+                intent = command.get("intent")
+                print(f"[VisionPipeline] CEO routing intent: {intent}")
+
+                # 1. Route to AI Worker
+                if intent in [INTENT_SCENE, INTENT_TEXT]:
+                    if self.ai_worker:
+                        # Drop it into the AI's waiting room
+                        self.ai_worker._command_queue.put_nowait(command)
+                    else:
+                        print("[VisionPipeline] Warning: AI Worker not initialized.")
+
+                # 2. Route to Enrollment (Will wire up later)
+                elif intent == INTENT_ENROLL:
+                    print("[VisionPipeline] Triggering Enrollment Protocol...")
+                    
+                # 3. Route to Forget (Will wire up later)
+                elif intent == INTENT_FORGET:
+                    print("[VisionPipeline] Triggering Forget Protocol...")
+
+                # 4. Global Shutdown
+                elif intent == INTENT_QUIT:
+                    print("[VisionPipeline] Quit command received.")
+                    # (Main loop handles this later)
+
+            except Exception as e:
+                print(f"[VisionPipeline] Command routing error: {e}")
+            finally:
+                self._command_inbox.task_done()
+
     def hot_reload(self):
         """Reload brain from disk and wipe short-term memory atomically."""
         print("[VisionPipeline] Hot-reload triggered. Wiping short-term memory...")
@@ -93,6 +151,10 @@ class VisionPipeline:
 
     def process_frame(self, frame, current_time):
         """Process a single frame: detect, track, recognise, alert."""
+
+        self.process_inbox()
+        if self.yolo_worker:
+            self.yolo_worker.enqueue_frame(frame)
 
         mp_image = mp.Image(
             image_format=mp.ImageFormat.SRGB,
@@ -215,10 +277,6 @@ class VisionPipeline:
                     # (If can_spawn was False for other reasons, acquire was never called.)
                     pass
                 # ──────────────────────────────────────────────────────────────
-
-            # ── Read final result (safe snapshot under lock) ──────────────────
-            with self._state_lock:
-                name = self.recognition_results.get(face_id)
 
             # ── Read final result (safe snapshot under lock) ──────────────────
             with self._state_lock:

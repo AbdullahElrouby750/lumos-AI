@@ -11,7 +11,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Callable, List, Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -46,6 +46,7 @@ class LumosServer:
         self._server_thread: Optional[threading.Thread] = None
         self._shutdown_event = threading.Event()
         self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.command_callback: Optional[Callable[[dict[str, Any]], None]] = None
 
         # Setup routes
         self._setup_routes()
@@ -108,6 +109,10 @@ class LumosServer:
                 filename="latest_scene.jpg"
             )
 
+    def set_command_callback(self, callback: Callable[[dict[str, Any]], None]) -> None:
+        """Register a callback to receive parsed JSON commands from WebSocket clients."""
+        self.command_callback = callback
+
     async def _broadcast_event(self, event: Event) -> None:
         """Broadcast an event to all active WebSocket connections."""
         disconnected = []
@@ -143,7 +148,11 @@ class LumosServer:
     async def _handle_incoming_command(self, command: dict) -> None:
         """Process commands received from the mobile client."""
         logger.info(f"Processing incoming command: {command}")
-        # TODO: integrate with the vision pipeline CommandQueue or command router.
+        if self.command_callback and callable(self.command_callback):
+            try:
+                self.command_callback(command)
+            except Exception as e:
+                logger.error(f"Command callback execution failed: {e}")
 
     async def _run_server(self) -> None:
         """Run the FastAPI server with Uvicorn."""

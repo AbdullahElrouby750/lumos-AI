@@ -4,7 +4,8 @@ import hashlib
 import queue
 import threading
 import time
-import pyttsx3
+
+from src.network.nova_network_models import BaseEvent
 
 
 class VoiceQueue:
@@ -42,9 +43,10 @@ class VoiceQueue:
         self._running    = True
         self._lock       = threading.Lock()
         self._is_paused  = threading.Event()   # set → worker holds non-CRITICAL items
-        self._is_speaking = threading.Event()  # set → TTS engine is active right now
+        self._is_speaking = threading.Event()  # set → a TTS event is active right now
         self._cooldowns  = {}                  # {(priority, text_hash): last_spoken_time}
         self.current_text = ""
+        self.server = None
 
         self._worker_thread = threading.Thread(target=self._worker, daemon=True)
         self._worker_thread.start()
@@ -110,6 +112,10 @@ class VoiceQueue:
             self._running = False
         self._worker_thread.join(timeout=5.0)
 
+    def set_server(self, server):
+        """Inject the LumosServer instance for sending TTS events over WebSocket."""
+        self.server = server
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -148,17 +154,21 @@ class VoiceQueue:
                 time.sleep(0.1)
                 continue
 
-            # Speak
+            # Speak via the injected server event stream
             try:
                 self.current_text = text.lower()
                 self._is_speaking.set()
-                engine = pyttsx3.init()
-                engine.setProperty('rate', 190)
-                engine.say(text)
-                engine.runAndWait()
-                del engine
+                if self.server:
+                    event = BaseEvent.create(
+                        "TTS_AUDIO",
+                        {"text": text},
+                        priority=priority,
+                    )
+                    self.server.send_event(event)
+                else:
+                    print(f"[VoiceQueue] No server attached; dropping TTS text: {text!r}")
             except Exception as e:
-                print(f"[VoiceQueue] TTS error: {e}")
+                print(f"[VoiceQueue] TTS event error: {e}")
             finally:
                 self._is_speaking.clear()
                 self.current_text = ""
