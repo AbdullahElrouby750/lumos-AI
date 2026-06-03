@@ -6,6 +6,7 @@ import pickle
 from deepface import DeepFace
 import numpy as np
 import os
+import threading
 
 class FaceRecognizer:
     """
@@ -18,6 +19,7 @@ class FaceRecognizer:
         Initialize the FaceRecognizer.
         """
         self.known_faces = {}
+        self._brain_lock = threading.Lock()
         self.detector = None
         self.facenet_model = None
         self.KNOWN_WIDTH = 14.0  # cm
@@ -48,10 +50,15 @@ class FaceRecognizer:
         try:
             if os.path.exists(self.brain_file):
                 with open(self.brain_file, "rb") as f:
-                    self.known_faces = pickle.load(f)
+                    new_brain = pickle.load(f)
+                
+                # Lock only for the exact microsecond we swap the pointer
+                with self._brain_lock:
+                    self.known_faces = new_brain
                 print(f"[FaceRecognizer] Hot-Reloaded {len(self.known_faces)} known faces.")
             else:
-                self.known_faces = {}
+                with self._brain_lock:
+                    self.known_faces = {}
                 print("[FaceRecognizer] Brain file not found. Cleared memory.")
         except Exception as e:
             print(f"[FaceRecognizer] Error reloading brain: {e}")
@@ -82,17 +89,19 @@ class FaceRecognizer:
             best_match = "Unknown"
             min_dist = 0.4  # Stricter threshold because our data is cleaner now!
 
-            for name, embeddings in self.known_faces.items():
-                for db_emb in embeddings:
-                    # Cosine distance math
-                    a = np.matmul(current_embedding, db_emb)
-                    b = np.sum(np.multiply(current_embedding, current_embedding))
-                    c = np.sum(np.multiply(db_emb, db_emb))
-                    dist = 1 - (a / (np.sqrt(b) * np.sqrt(c)))
+            # --- BUG C-3 FIX: Lock the dictionary iteration! ---
+            with self._brain_lock:
+                for name, embeddings in self.known_faces.items():
+                    for db_emb in embeddings:
+                        # Cosine distance math
+                        a = np.matmul(current_embedding, db_emb)
+                        b = np.sum(np.multiply(current_embedding, current_embedding))
+                        c = np.sum(np.multiply(db_emb, db_emb))
+                        dist = 1 - (a / (np.sqrt(b) * np.sqrt(c)))
 
-                    if dist < min_dist:
-                        min_dist = dist
-                        best_match = name
+                        if dist < min_dist:
+                            min_dist = dist
+                            best_match = name
 
             return best_match
 

@@ -10,8 +10,10 @@ from src.core.utils import (
     draw_bounding_box, draw_text,
 )
 from src.core.nova_commands import (
-    INTENT_SCENE, INTENT_TEXT, INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
+    INTENT_CONFIRM, INTENT_DENY, INTENT_SCENE, INTENT_TEXT, INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT
 )
+import difflib  # <--- NEW
+from src.modules.nove_forget import forget_person  # <--- NEW
 
 # ── Tuning constants ──────────────────────────────────────────────────────────
 # A face must be tracked for this many consecutive frames before we spend any
@@ -49,6 +51,12 @@ class VisionPipeline:
         self.yolo_worker = yolo_worker
         self.enrollment_worker = enrollment_worker
         self.is_enrolling = False
+        # --- BUG E-1 FIX: Add state variable ---
+        self.pending_forget_name = None 
+        # ---------------------------------------
+        # --- BUG F-1 FIX (Part 1): Add the quit signal flag ---
+        self.quit_requested = False
+        # ------------------------------------------------------
         self._command_inbox: queue.Queue[dict] = queue.Queue()
         self.detector = FaceDetector()
         self.recognizer = FaceRecognizer()
@@ -110,7 +118,11 @@ class VisionPipeline:
                 if intent in [INTENT_SCENE, INTENT_TEXT]:
                     if self.ai_worker:
                         # Drop it into the AI's waiting room
-                        self.ai_worker._command_queue.put_nowait(command)
+                        # --- BUG D-1 FIX: Use the public API ---
+                        success = self.ai_worker.enqueue_command(command)
+                        if not success:
+                            print("[VisionPipeline] Warning: AI Worker queue is full. Command dropped.")
+                        # ---------------------------------------
                     else:
                         print("[VisionPipeline] Warning: AI Worker not initialized.")
 
@@ -118,25 +130,76 @@ class VisionPipeline:
                 elif intent == INTENT_ENROLL:
                     target_name = command.get("target_name")
                     if self.enrollment_worker and target_name:
-                        self.is_enrolling = True
-                        try:
-                            self.enrollment_worker.start_session(
-                                target_name,
-                                on_complete=self._on_enrollment_done,
-                            )
-                        except TypeError:
-                            self.enrollment_worker.start_session(target_name, on_complete=self._on_enrollment_done)
+                        with self._state_lock:
+                            self.is_enrolling = True
+                        
+                        # --- BUG C-5 FIX: Removed the dead try/except block ---
+                        self.enrollment_worker.start_session(
+                            target_name,
+                            on_complete=self._on_enrollment_done,
+                        )
+                        # ------------------------------------------------------
                     else:
                         print("[VisionPipeline] Enrollment request missing target_name or worker not configured.")
 
                 # 3. Route to Forget (Will wire up later)
                 elif intent == INTENT_FORGET:
-                    print("[VisionPipeline] Triggering Forget Protocol...")
+                    target_name = command.get("target_name", "").strip()
+                    
+                    with self._state_lock:
+                        known_names = list(self.recognizer.known_faces.keys())
+
+                    # If they didn't specify a name, read out the list
+                    if not target_name:
+                        if not known_names:
+                            self.voice_queue.speak("I don't know anyone yet.", self.voice_queue.PRIORITY_SYSTEM)
+                        else:
+                            name_list = ", ".join(known_names)
+                            self.voice_queue.speak(f"Who should I forget? I know: {name_list}", self.voice_queue.PRIORITY_SYSTEM)
+                        continue
+
+                    # Fuzzy match (If user says "Ruby", find "Rouby")
+                    best_matches = difflib.get_close_matches(target_name, known_names, n=1, cutoff=0.6)
+
+                    if best_matches:
+                        matched_name = best_matches[0]
+                        with self._state_lock:
+                            self.pending_forget_name = matched_name
+                        self.voice_queue.speak(f"Are you sure you want to forget {matched_name}? Say yes to confirm.", self.voice_queue.PRIORITY_FEEDBACK)
+                    else:
+                        self.voice_queue.speak(f"I couldn't find {target_name}. Please try again.", self.voice_queue.PRIORITY_FEEDBACK)
+
+                # 4. Route Confirm / Deny (For the Forget Protocol)
+                elif intent == INTENT_CONFIRM:
+                    with self._state_lock:
+                        target = self.pending_forget_name
+                        
+                    if target:
+                        # 1. Delete from hard drive
+                        success = forget_person(target)
+                        if success:
+                            self.voice_queue.speak(f"I have forgotten {target}.", self.voice_queue.PRIORITY_SYSTEM)
+                            # 2. Hot-reload the RAM to wipe short-term memory
+                            self.hot_reload()
+                        else:
+                            self.voice_queue.speak(f"Error trying to forget {target}.", self.voice_queue.PRIORITY_WARNING)
+                        
+                        # 3. Clear the pending state
+                        with self._state_lock:
+                            self.pending_forget_name = None
+
+                elif intent == INTENT_DENY:
+                    with self._state_lock:
+                        if self.pending_forget_name:
+                            self.pending_forget_name = None
+                            self.voice_queue.speak("Forget request cancelled.", self.voice_queue.PRIORITY_SYSTEM)
 
                 # 4. Global Shutdown
                 elif intent == INTENT_QUIT:
-                    print("[VisionPipeline] Quit command received.")
-                    # (Main loop handles this later)
+                    print("[VisionPipeline] Quit command received. Signaling main loop...")
+                    # --- BUG F-1 FIX (Part 2): Press the button ---
+                    self.quit_requested = True
+                    # ----------------------------------------------
 
             except Exception as e:
                 print(f"[VisionPipeline] Command routing error: {e}")
@@ -146,7 +209,8 @@ class VisionPipeline:
     def _on_enrollment_done(self, target_name: str):
         print(f"[VisionPipeline] Enrollment completed for {target_name}. Reloading brain...")
         self.hot_reload()
-        self.is_enrolling = False
+        with self._state_lock:
+            self.is_enrolling = False
 
     def hot_reload(self):
         """Reload brain from disk and wipe short-term memory atomically."""
@@ -173,8 +237,12 @@ class VisionPipeline:
         self.process_inbox()
         if self.yolo_worker:
             self.yolo_worker.enqueue_frame(frame.copy())
-
-        if self.is_enrolling and self.enrollment_worker:
+        
+        # --- BUG C-4 FIX: Lock the read check! ---
+        with self._state_lock:
+            currently_enrolling = self.is_enrolling
+        
+        if currently_enrolling and self.enrollment_worker:
             self.enrollment_worker.enqueue_frame(frame.copy())
             cv2.putText(
                 frame,
@@ -265,21 +333,26 @@ class VisionPipeline:
                     def _make_worker(fid, crop):
                         def recognize_worker():
                             try:
-                                name = self.recognizer.recognize_face_crop(crop)
-
                                 with self._state_lock:
+                                    # --- BUG A-2 FIX: THE ZOMBIE GATE ---
+                                    # If the face vanished while DeepFace was thinking, 
+                                    # the main thread deleted it from _stability_counter.
+                                    # Abort the write so we don't leak memory.
+                                    if fid not in self._stability_counter:
+                                        return
+                                    
                                     if fid not in self.temporal_votes:
                                         self.temporal_votes[fid] = []
+                                        
                                     self.temporal_votes[fid].append(name)
-                                    vote_count = len(self.temporal_votes[fid])
                                     votes_snapshot = self.temporal_votes[fid][-3:]
 
-                                if vote_count >= 3:
-                                    final_name = max(
-                                        set(votes_snapshot),
-                                        key=votes_snapshot.count,
-                                    )
-                                    with self._state_lock:
+                                    # We also combined the locks here for better performance!
+                                    if len(self.temporal_votes[fid]) >= 3:
+                                        final_name = max(
+                                            set(votes_snapshot),
+                                            key=votes_snapshot.count,
+                                        )
                                         self.recognition_results[fid] = final_name
                                         if final_name == "Unknown":
                                             self.unknown_timers[fid] = time.time()
@@ -318,14 +391,15 @@ class VisionPipeline:
             display_name = name if name is not None else "Analyzing..."
 
             if display_name != "Unknown" and display_name != "Analyzing...":
-                last_spoken = self.name_cooldowns.get(display_name, 0)
-                if current_time - last_spoken > self.COOLDOWN_TIME:
-                    self.voice_queue.speak(
-                        f"hi, I see {display_name}",
-                        self.voice_queue.PRIORITY_SOCIAL,
-                    )
-                    self.name_cooldowns[display_name] = current_time
-                self.recognized_ids.add(face_id)
+                with self._state_lock:
+                    last_spoken = self.name_cooldowns.get(display_name, 0)
+                    if current_time - last_spoken > self.COOLDOWN_TIME:
+                        self.voice_queue.speak(
+                            f"hi, I see {display_name}",
+                            self.voice_queue.PRIORITY_SOCIAL,
+                        )
+                        self.name_cooldowns[display_name] = current_time
+                    self.recognized_ids.add(face_id)
 
             if display_name != "Unknown" and display_name != "Analyzing..." and face_id in self.recognized_ids:
                 # Jitter buffer update
@@ -376,8 +450,8 @@ class VisionPipeline:
             self.previous_bboxes.pop(fid, None)
             self.bbox_history_buffer.pop(fid, None)
             self.alerted_approaching_ids.pop(fid, None)
-            self.recognized_ids.discard(fid)
             with self._state_lock:
+                self.recognized_ids.discard(fid)
                 self.recognition_results.pop(fid, None)
                 self.temporal_votes.pop(fid, None)
                 self.unknown_timers.pop(fid, None)

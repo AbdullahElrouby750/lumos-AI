@@ -42,6 +42,8 @@ def main():
 
     try:
         cap = cv2.VideoCapture(0)
+        # --- BUG A-3 FIX (Part 1): Hardware Request ---
+        cap.set(cv2.CAP_PROP_FPS, 30)
         if not cap.isOpened():
             raise Exception("Camera not accessible")
     except Exception as e:
@@ -57,6 +59,11 @@ def main():
     last_time = 0
     quit_flag = [False]
 
+    # --- BUG A-3 FIX (Part 2): Throttle Setup ---
+    TARGET_FPS = 30
+    FRAME_TIME_TARGET = 1.0 / TARGET_FPS
+    # --------------------------------------------
+    
     print("Lumos: Ready for edge commands from the server.")
 
     try:
@@ -69,6 +76,12 @@ def main():
             
             frame = cv2.flip(frame, 1)
             frame = vision_pipeline.process_frame(frame, current_time)
+            
+            # --- BUG F-1 FIX (Part 3): Listen to the CEO ---
+            if vision_pipeline.quit_requested:
+                print("Shutdown signal received from pipeline. Breaking loop.")
+                break
+            # -----------------------------------------------
 
             fps = calculate_fps(current_time, last_time)
             last_time = current_time
@@ -77,10 +90,19 @@ def main():
             cv2.imshow("Lumos Face Detection - Spam Filter Active", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+            
+            # --- BUG A-3 FIX (Part 3): Software Throttle Execution ---
+            # Calculate how long this frame took. If it was faster than 33ms, sleep the difference.
+            process_time = time.time() - current_time 
+            sleep_time = FRAME_TIME_TARGET - process_time
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            # ---------------------------------------------------------
 
     except Exception as e:
         print(f"Error in main loop: {e}")
     finally:
+        voice_queue.speak("Lumos shutting down", voice_queue.PRIORITY_FEEDBACK)
         cap.release()
         cv2.destroyAllWindows()
         vision_pipeline.close()
@@ -88,7 +110,6 @@ def main():
         yolo_worker.stop()
         ai_worker.stop()
         enrollment_worker.stop()
-        voice_queue.speak("Lumos shutting down", voice_queue.PRIORITY_FEEDBACK)
         time.sleep(2)
         voice_queue.stop()
 

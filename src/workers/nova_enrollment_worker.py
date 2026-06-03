@@ -60,8 +60,8 @@ class NovaEnrollmentWorker:
             return False
 
         try:
-            self._command_queue.put_nowait(sanitized)
             self._on_complete = on_complete
+            self._command_queue.put_nowait(sanitized)
             return True
         except queue.Full:
             self._send_tts("Enrollment request dropped. Try again later.", self.PRIORITY_WARNING)
@@ -77,6 +77,10 @@ class NovaEnrollmentWorker:
     def stop(self) -> None:
         self._stop_event.set()
         self._worker_thread.join(timeout=5.0)
+        # --- BUG F-3 FIX: Check for zombie encoding threads ---
+        if self._worker_thread.is_alive():
+            print("[NovaEnrollmentWorker] CRITICAL WARNING: Thread still active after 5s timeout! A brain build is likely in progress.")
+        # ------------------------------------------------------
         self.validator.close()
 
     def _worker_loop(self) -> None:
@@ -175,10 +179,11 @@ class NovaEnrollmentWorker:
             print(f"[NovaEnrollmentWorker] Brain build failed: {exc}")
             self._send_tts("Enrollment failed.", self.PRIORITY_SYSTEM)
         finally:
+            temp_name = self.target_name  # Store before clearing
             self.target_name = None
             self._drain_queues()
             if self._on_complete:
-                self._on_complete(self.target_name)
+                self._on_complete(temp_name)
 
     def _save_frame(self, frame: Any, step_name: str) -> None:
         safe_name = self.target_name.replace(" ", "_") if self.target_name else "unknown"

@@ -189,20 +189,20 @@ def is_in_collision_zone(bbox, frame_width, zone_percent=0.4):
     return zone_left <= center_x <= zone_right
 
 
-def is_bbox_expanding(bbox_current, bbox_history_list, threshold=10):
+def is_bbox_expanding(bbox_current, bbox_history_list, threshold=1000):
     """
-    Checks if bounding box is expanding using a moving average over the last 5 frames.
-    Fixes the 'jitter' spam.
+    Checks if bounding box AREA is expanding using a moving average over the last 5 frames.
+    Fixes the 'jitter' spam and accounts for vertical approach angles.
     """
     if not bbox_history_list or len(bbox_history_list) < 5:
         return False
     
-    # Get average width of older frames
-    older_avg = sum(b.width for b in bbox_history_list[:-1]) / (len(bbox_history_list) - 1)
-    current_width = bbox_current.width
+    # Get average AREA (width * height) of older frames
+    older_avg_area = sum((b.width * b.height) for b in bbox_history_list[:-1]) / (len(bbox_history_list) - 1)
+    current_area = bbox_current.width * bbox_current.height
     
-    # Only return True if the current width is consistently larger than the recent average
-    return (current_width - older_avg) > threshold
+    # Only return True if the current area is consistently larger than the recent average
+    return (current_area - older_avg_area) > threshold
 
 
 def process_command(command, enrollment_manager, voice_queue, quit_flag, vision_pipeline=None):

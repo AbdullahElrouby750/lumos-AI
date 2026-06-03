@@ -5,6 +5,7 @@ import threading
 
 
 def build_nova_brain(name = "Person"):
+    target_name=name
     # Configuration
     DB_FOLDER = "face_db"
     ENCODINGS_FILE = "nova_brain.pkl"
@@ -23,10 +24,16 @@ def build_nova_brain(name = "Person"):
     # 2. Process every image in the folder
     for filename in os.listdir(DB_FOLDER):
         if filename.endswith(".jpg") or filename.endswith(".png"):
-            img_path = os.path.join(DB_FOLDER, filename)
-            
+            # --- BUG X-3 FIX (Part 2): Strict Filtering ---
             # Extract the name from the filename (e.g., 'Adham_0.jpg' -> 'Adham')
-            name = filename.split('_')[0]
+            image_owner = filename.split('_')[0]
+            
+            # If this photo doesn't belong to the person we are enrolling, skip it!
+            if image_owner != target_name:
+                continue
+                
+            img_path = os.path.join(DB_FOLDER, filename)
+            # ----------------------------------------------
 
             try:
                 print(f"Encoding {name} from {filename}...")
@@ -52,11 +59,19 @@ def build_nova_brain(name = "Person"):
                 pass
                 
     # 4. Final Report
-        print(f"\nEncoding complete. {success_count} faces encoded, {failure_count} failures. {len(known_faces)} unique individuals in the brain.") 
+    print(f"\nEncoding complete. {success_count} faces encoded, {failure_count} failures. {len(known_faces)} unique individuals in the brain.") 
 
     # 4. Save the mathematical brain to disk
-    with open(ENCODINGS_FILE, "wb") as f:
+    # --- BUG F-3 FIX: Atomic OS Replace ---
+    temp_file = "nova_brain_tmp.pkl"
+    final_file = "nova_brain.pkl"
+    
+    with open(temp_file, "wb") as f:
         pickle.dump(known_faces, f)
+        
+    # os.replace is an atomic operation at the kernel level.
+    # It guarantees the file is never left in a half-written state.
+    os.replace(temp_file, final_file)
     
     print(f"\nEncoding complete. 'nova_brain.pkl' updated. Memory optimized.")
 

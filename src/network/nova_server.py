@@ -24,7 +24,9 @@ from src.network.nova_network_models import BaseEvent, Event
 logger = logging.getLogger(__name__)
 
 # Hardware-aware paths (Pi 4 optimized)
-BRAIN_FILE_PATH = Path("data") / "face_db" / "nova_brain.pkl"  # Local DB folder
+# --- BUG X-1 FIX: Point server to the project root ---
+BRAIN_FILE_PATH = Path("nova_brain.pkl") 
+# -----------------------------------------------------
 SCENE_DIR_PATH = Path("/dev/shm")  # RAM disk for transient images
 LATEST_SCENE_FILE = SCENE_DIR_PATH / "latest_scene.jpg"
 
