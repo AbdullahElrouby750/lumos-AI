@@ -5,6 +5,7 @@ import queue
 import threading
 import time
 
+from src.core.nova_logger import logger
 from src.network.nova_network_models import BaseEvent
 
 
@@ -144,7 +145,7 @@ class VoiceQueue:
 
             # TTL check
             if time.time() - timestamp > self.TTL:
-                print(f"[VoiceQueue] TTL expired, discarding: {text!r}")
+                logger.warning(f"[VoiceQueue] TTL expired, discarding: {text!r}")
                 continue
 
             # Pause check: non-CRITICAL items wait while paused
@@ -166,9 +167,9 @@ class VoiceQueue:
                     )
                     self.server.send_event(event)
                 else:
-                    print(f"[VoiceQueue] No server attached; dropping TTS text: {text!r}")
+                    logger.warning(f"[VoiceQueue] No server attached; dropping TTS text: {text!r}")
             except Exception as e:
-                print(f"[VoiceQueue] TTS event error: {e}")
+                logger.exception(f"[VoiceQueue] TTS event error: {e}")
             finally:
                 self._is_speaking.clear()
                 self.current_text = ""

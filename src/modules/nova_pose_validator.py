@@ -6,6 +6,8 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from src.core.nova_logger import logger
+
 # ── Tuning constants ──────────────────────────────────────────────────────────
 # Number of frames whose ratios are averaged before a pose decision is made.
 # Larger = smoother but slower to respond.  5 frames at 30 FPS = ~167 ms lag,
@@ -55,7 +57,7 @@ class PoseValidator:
             )
             self.landmarker = vision.FaceLandmarker.create_from_options(options)
         except Exception as e:
-            print(f"[PoseValidator] Error initialising FaceLandmarker: {e}")
+            logger.exception(f"[PoseValidator] Error initialising FaceLandmarker: {e}")
             self.landmarker = None
 
         # ── BUG 2 FIX: rolling buffers ────────────────────────────────────────
@@ -72,10 +74,10 @@ class PoseValidator:
     # ── Public API ────────────────────────────────────────────────────────────
     def _ensure_model_exists(self):
         if not os.path.exists(self.model_path):
-            print(f"Downloading {self.model_path}...")
+            logger.info(f"Downloading {self.model_path}...")
             url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
             urllib.request.urlretrieve(url, self.model_path)
-            print("Download complete.")
+            logger.info("Download complete.")
 
     def reset(self):
         """

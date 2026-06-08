@@ -3,6 +3,8 @@ import pickle
 from deepface import DeepFace
 import threading
 
+from src.core.nova_logger import logger
+
 
 def build_nova_brain(name = "Person"):
     target_name=name
@@ -19,7 +21,7 @@ def build_nova_brain(name = "Person"):
     else:
         known_faces = {} # Format: {"Name": [embedding1, embedding2, ...]}
 
-    print("Nova Encoder: Scanning for new images...")
+    logger.info("Nova Encoder: Scanning for new images...")
 
     # 2. Process every image in the folder
     for filename in os.listdir(DB_FOLDER):
@@ -36,7 +38,7 @@ def build_nova_brain(name = "Person"):
             # ----------------------------------------------
 
             try:
-                print(f"Encoding {name} from {filename}...")
+                logger.info(f"Encoding {name} from {filename}...")
                 
                 # 'represent' returns a list of dictionaries (one for each face in image)
                 # We use 'Facenet512' for high accuracy
@@ -50,16 +52,16 @@ def build_nova_brain(name = "Person"):
 
                 # 3. DELETE the image after successful encoding
                 os.remove(img_path)
-                print(f"Successfully encoded {name} and deleted raw image.")
+                logger.info(f"Successfully encoded {name} and deleted raw image.")
                 success_count += 1
 
             except Exception as e:
-                print(f"Skipping {filename}: Could not find a clear face. (Keep image for retry)")
+                logger.warning(f"Skipping {filename}: Could not find a clear face. (Keep image for retry)")
                 failure_count += 1
                 pass
                 
     # 4. Final Report
-    print(f"\nEncoding complete. {success_count} faces encoded, {failure_count} failures. {len(known_faces)} unique individuals in the brain.") 
+    logger.info(f"Encoding complete. {success_count} faces encoded, {failure_count} failures. {len(known_faces)} unique individuals in the brain.") 
 
     # 4. Save the mathematical brain to disk
     # --- BUG F-3 FIX: Atomic OS Replace ---
@@ -73,7 +75,7 @@ def build_nova_brain(name = "Person"):
     # It guarantees the file is never left in a half-written state.
     os.replace(temp_file, final_file)
     
-    print(f"\nEncoding complete. 'nova_brain.pkl' updated. Memory optimized.")
+    logger.info("Encoding complete. 'nova_brain.pkl' updated. Memory optimized.")
 
 if __name__ == "__main__":
     build_nova_brain()

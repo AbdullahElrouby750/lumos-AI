@@ -4,6 +4,7 @@ import time
 import logging
 
 from src.core.nova_audio import get_voice_queue
+from src.core.nova_logger import setup_logger
 from src.core.nova_vision_pipeline import VisionPipeline
 from src.core.utils import draw_text, calculate_fps
 from src.network.nova_server import LumosServer
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     """Main CEO script for Lumos with server-driven workers and a clean edge pipeline."""
+    setup_logger()
     server = LumosServer()
     server.start()
 

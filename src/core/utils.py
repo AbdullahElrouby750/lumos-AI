@@ -3,6 +3,7 @@ import time
 import math
 import difflib
 import random
+from src.core.nova_logger import logger
 from src.modules.nove_forget import forget_person, get_names_from_PK
 from src.core.nova_commands import INTENT_ENROLL, INTENT_FORGET, INTENT_QUIT, INTENT_CANCEL, INTENT_CONFIRM, INTENT_DENY, INTENT_WAKE_ONLY
 
@@ -310,4 +311,4 @@ def handle_manual_input(intent_type, command_queue):
             command = {"intent": intent_type, "target_name": name}
             command_queue.put(command)
     except Exception as e:
-        print(f"Manual input error: {e}")
+        logger.exception(f"Manual input error: {e}")

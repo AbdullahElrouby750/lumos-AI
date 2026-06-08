@@ -3,6 +3,7 @@ import json
 import socket
 import threading
 
+from src.core.nova_logger import logger
 from src.core.nova_commands import parse_intent
 
 class CommandListener(threading.Thread):
@@ -23,9 +24,9 @@ class CommandListener(threading.Thread):
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.bind((self.host, self.port))
             self.sock.settimeout(1.0)
-            print(f"Command listener bound to {self.host}:{self.port}")
+            logger.info(f"Command listener bound to {self.host}:{self.port}")
         except Exception as e:
-            print(f"Failed to start command listener: {e}")
+            logger.exception(f"Failed to start command listener: {e}")
             self.running = False
             return
 
@@ -41,7 +42,7 @@ class CommandListener(threading.Thread):
                     # If the mic hears more than 80% of what Lumos is saying, IGNORE IT.
                     match_ratio = difflib.SequenceMatcher(None, raw_text, current_speech).ratio()
                     if match_ratio > 0.8:
-                        print(f"DEBUG: Talk-back detected ({int(match_ratio*100)}% match). Ignoring self-voice.")
+                        logger.info(f"Talk-back detected ({int(match_ratio*100)}% match). Ignoring self-voice.")
                         continue
                 # ----------------------------------
                 # Import here to avoid circular import
@@ -49,7 +50,7 @@ class CommandListener(threading.Thread):
                 if command["intent"] != "INTENT_NONE":
                     command["raw_text"] = raw_text
                     self.command_queue.put(command)
-                    print(f"Received voice command: {command}")
+                    logger.info(f"Received voice command: {command}")
     
                     # Voice barge-in: Purge old messages and PAUSE the worker
                     if hasattr(self.voice_queue, 'clear_below_critical'):
@@ -58,9 +59,9 @@ class CommandListener(threading.Thread):
             except socket.timeout:
                 continue
             except json.JSONDecodeError:
-                print("Received invalid JSON command payload.")
+                logger.warning("Received invalid JSON command payload.")
             except Exception as e:
-                print(f"Command listener error: {e}")
+                logger.exception(f"Command listener error: {e}")
 
     def stop(self):
         self.running = False

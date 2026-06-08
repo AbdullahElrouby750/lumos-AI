@@ -9,6 +9,8 @@ import json
 import os
 from keys import ORS_API_KEY
 
+from src.core.nova_logger import logger
+
 client     = ORS(api_key=ORS_API_KEY)
 geocoder   = Nominatim(user_agent="lumos_assistive_ai")
 CACHE_FILE = "route_cache.json"
@@ -21,7 +23,7 @@ def geocode(place_name: str) -> tuple | None:
         if loc:
             return (loc.longitude, loc.latitude)
     except Exception as e:
-        print(f">>> [GEOCODE ERROR]: {e}")
+        logger.exception(f">>> [GEOCODE ERROR]: {e}")
     return None
 
 
@@ -49,7 +51,7 @@ def get_navigation_steps(start_coords: tuple, end_coords: tuple) -> list:
             json.dump(steps, f)
         return steps
     except Exception as e:
-        print(f">>> [ORS ERROR]: {e}")
+        logger.exception(f">>> [ORS ERROR]: {e}")
         if os.path.exists(CACHE_FILE):
             with open(CACHE_FILE, "r") as f:
                 return json.load(f)

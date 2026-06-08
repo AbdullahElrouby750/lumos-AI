@@ -1,8 +1,10 @@
 import easyocr
 
+from src.core.nova_logger import logger
+
 # Initialize the reader once globally
 # It will download models (~100MB) on the first run
-print(">>> [SYSTEM]: Loading OCR Models... Please wait.")
+logger.info(">>> [SYSTEM]: Loading OCR Models... Please wait.")
 reader = easyocr.Reader(['en'])
 
 def get_text_from_image(image_path):
@@ -16,5 +18,5 @@ def get_text_from_image(image_path):
         extracted_text = " ".join([res[1] for res in results])
         return extracted_text if extracted_text.strip() else "No specific text detected."
     except Exception as e:
-        print(f">>> [OCR ERROR]: {e}")
+        logger.exception(f">>> [OCR ERROR]: {e}")
         return ""

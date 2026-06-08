@@ -3,6 +3,8 @@ import os
 import threading
 import pyttsx3 as tts
 
+from src.core.nova_logger import logger
+
 # 1. Initialize Voice and Load Brain
 def speak(text):
     engine = tts.init()
@@ -14,7 +16,7 @@ ENCODINGS_FILE = "nova_brain.pkl"
 
 def get_names_from_PK():
     if not os.path.exists(ENCODINGS_FILE):
-        print("The brain file (nova_brain.pkl) does not exist. No names to show.")
+        logger.warning("The brain file (nova_brain.pkl) does not exist. No names to show.")
         return False
     
     with open(ENCODINGS_FILE, "rb") as f:

@@ -8,6 +8,8 @@ import numpy as np
 import os
 import threading
 
+from src.core.nova_logger import logger
+
 class FaceRecognizer:
     """
     Refactored face recognizer as a callable class.
@@ -35,14 +37,14 @@ class FaceRecognizer:
             options = vision.FaceDetectorOptions(base_options=base_options)
             self.detector = vision.FaceDetector.create_from_options(options)
         except Exception as e:
-            print(f"Error initializing detector: {e}")
+            logger.exception(f"Error initializing detector: {e}")
 
         # 3. Initialize FaceNet
         try:
             self.facenet_model = DeepFace.build_model("Facenet512")
-            print("Facenet512 model initialized.")
+            logger.info("Facenet512 model initialized.")
         except Exception as e:
-            print(f"Error initializing Facenet512: {e}")
+            logger.exception(f"Error initializing Facenet512: {e}")
 
     # --- NEW METHOD: THE HOT RELOAD ---
     def load_brain(self):
@@ -55,13 +57,13 @@ class FaceRecognizer:
                 # Lock only for the exact microsecond we swap the pointer
                 with self._brain_lock:
                     self.known_faces = new_brain
-                print(f"[FaceRecognizer] Hot-Reloaded {len(self.known_faces)} known faces.")
+                logger.info(f"[FaceRecognizer] Hot-Reloaded {len(self.known_faces)} known faces.")
             else:
                 with self._brain_lock:
                     self.known_faces = {}
-                print("[FaceRecognizer] Brain file not found. Cleared memory.")
+                logger.warning("[FaceRecognizer] Brain file not found. Cleared memory.")
         except Exception as e:
-            print(f"[FaceRecognizer] Error reloading brain: {e}")
+            logger.exception(f"[FaceRecognizer] Error reloading brain: {e}")
 
 
 
@@ -106,7 +108,7 @@ class FaceRecognizer:
             return best_match
 
         except Exception as e:
-            print(f"Alignment/Recognition error in engine: {e}")
+            logger.exception(f"Alignment/Recognition error in engine: {e}")
             return "Unknown"
 
     def close(self):

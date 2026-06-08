@@ -2,6 +2,8 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from src.core.nova_logger import logger
+
 class FaceDetector:
     """
     Refactored face detector as a callable class.
@@ -17,7 +19,7 @@ class FaceDetector:
             options = vision.FaceDetectorOptions(base_options=base_options)
             self.detector = vision.FaceDetector.create_from_options(options)
         except Exception as e:
-            print(f"Error initializing FaceDetector: {e}")
+            logger.exception(f"Error initializing FaceDetector: {e}")
             self.detector = None
 
     def detect(self, mp_image):
@@ -30,7 +32,7 @@ class FaceDetector:
         try:
             return self.detector.detect(mp_image)
         except Exception as e:
-            print(f"Detection error: {e}")
+            logger.exception(f"Detection error: {e}")
             return None
 
     def close(self):

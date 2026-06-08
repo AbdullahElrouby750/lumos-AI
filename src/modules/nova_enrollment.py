@@ -2,6 +2,7 @@ import os
 import threading
 import time
 from src.core.nova_audio import VoiceQueue
+from src.core.nova_logger import logger
 from src.modules.nove_face_encoder import build_nova_brain
 from src.modules.nova_pose_validator import PoseValidator
 import re
@@ -95,7 +96,7 @@ class EnrollmentManager:
         Safe to call whether or not enrollment is active.
         """
         if self.active:
-            print(f"[EnrollmentManager] Enrollment for '{self.name}' cancelled.")
+            logger.info(f"[EnrollmentManager] Enrollment for '{self.name}' cancelled.")
         self.active       = False
         self.name         = None
         self.step_index   = 0
@@ -108,7 +109,7 @@ class EnrollmentManager:
         filename = f"{safe_name}_{step_name}.jpg"
         path = os.path.join(self.db_folder, filename)
         cv2.imwrite(path, frame)
-        print(f"Saved enrollment frame: {path}")
+        logger.info(f"Saved enrollment frame: {path}")
 
     def _complete(self):
         self.active = False
@@ -133,7 +134,7 @@ class EnrollmentManager:
 
             self.voice_queue.speak("Enrollment database updated.", VoiceQueue.PRIORITY_INFO)
         except Exception as e:
-            print(f"Enrollment build error: {e}")
+            logger.exception(f"Enrollment build error: {e}")
             if self.vision_pipeline:
                 self.vision_pipeline.is_paused = False # Safety resume
             self.voice_queue.speak("Enrollment failed.", VoiceQueue.PRIORITY_WARNING)
