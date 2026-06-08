@@ -1,4 +1,5 @@
 import queue
+import logging
 import threading
 import time
 import cv2
@@ -26,6 +27,8 @@ _STABILITY_FRAMES_REQUIRED = 10
 _MAX_RECOGNITION_THREADS = 1
 # ─────────────────────────────────────────────────────────────────────────────
 
+
+logger = logging.getLogger(__name__)
 
 class VisionPipeline:
     """
@@ -99,7 +102,8 @@ class VisionPipeline:
             self._command_inbox.put_nowait(command)
             return True
         except queue.Full:
-            print(f"[VisionPipeline] Command inbox full, dropping command: {command}")
+            self.voice_queue.speak("Sorry, I'm a bit busy right now. Please try again in a moment.", self.voice_queue.PRIORITY_WARNING)
+            logger.warning(f"[VisionPipeline] Command inbox full, dropping command: {command}")
             return False
 
     def process_inbox(self):
@@ -112,7 +116,7 @@ class VisionPipeline:
 
             try:
                 intent = command.get("intent")
-                print(f"[VisionPipeline] CEO routing intent: {intent}")
+                logger.info(f"[VisionPipeline] CEO routing intent: {intent}")
 
                 # 1. Route to AI Worker
                 if intent in [INTENT_SCENE, INTENT_TEXT]:
@@ -121,10 +125,12 @@ class VisionPipeline:
                         # --- BUG D-1 FIX: Use the public API ---
                         success = self.ai_worker.enqueue_command(command)
                         if not success:
-                            print("[VisionPipeline] Warning: AI Worker queue is full. Command dropped.")
+                            self.ai_worker.speak("Sorry, I'm a bit busy right now. Please try again in a moment.", self.ai_worker.PRIORITY_WARNING)
+                            logger.warning("[VisionPipeline] Warning: AI Worker queue is full. Command dropped.")
                         # ---------------------------------------
                     else:
-                        print("[VisionPipeline] Warning: AI Worker not initialized.")
+                        self.voice_queue.speak("Sorry, the AI module is not available right now.", self.voice_queue.PRIORITY_WARNING)
+                        logger.warning("[VisionPipeline] Warning: AI Worker not initialized.")
 
                 # 2. Route to Enrollment
                 elif intent == INTENT_ENROLL:
@@ -140,7 +146,8 @@ class VisionPipeline:
                         )
                         # ------------------------------------------------------
                     else:
-                        print("[VisionPipeline] Enrollment request missing target_name or worker not configured.")
+                        self.voice_queue.speak("Sorry, I can't start enrollment right now.", self.voice_queue.PRIORITY_WARNING)
+                        logger.warning("[VisionPipeline] Enrollment request missing target_name or worker not configured.")
 
                 # 3. Route to Forget (Will wire up later)
                 elif intent == INTENT_FORGET:
@@ -196,25 +203,26 @@ class VisionPipeline:
 
                 # 4. Global Shutdown
                 elif intent == INTENT_QUIT:
-                    print("[VisionPipeline] Quit command received. Signaling main loop...")
+                    logger.info("[VisionPipeline] Quit command received. Signaling main loop...")
                     # --- BUG F-1 FIX (Part 2): Press the button ---
                     self.quit_requested = True
                     # ----------------------------------------------
 
             except Exception as e:
-                print(f"[VisionPipeline] Command routing error: {e}")
+                self.voice_queue.speak("Sorry, I encountered an error while processing your request.", self.voice_queue.PRIORITY_WARNING)
+                logger.exception(f"[VisionPipeline] Command routing error: {e}")
             finally:
                 self._command_inbox.task_done()
 
     def _on_enrollment_done(self, target_name: str):
-        print(f"[VisionPipeline] Enrollment completed for {target_name}. Reloading brain...")
+        logger.info(f"[VisionPipeline] Enrollment completed for {target_name}. Reloading brain...")
         self.hot_reload()
         with self._state_lock:
             self.is_enrolling = False
 
     def hot_reload(self):
         """Reload brain from disk and wipe short-term memory atomically."""
-        print("[VisionPipeline] Hot-reload triggered. Wiping short-term memory...")
+        logger.info("[VisionPipeline] Hot-reload triggered. Wiping short-term memory...")
         self.recognizer.load_brain()
 
         with self._state_lock:
@@ -310,7 +318,7 @@ class VisionPipeline:
                             self.temporal_votes.pop(face_id, None)
                             self.unknown_timers.pop(face_id, None)
                         self._stability_counter[face_id] = 0  # force re-stabilisation
-                        print(
+                        logger.info(
                             f"[VisionPipeline] Re-evaluating Unknown ID {face_id} "
                             f"after 10 s expiry."
                         )
@@ -358,7 +366,7 @@ class VisionPipeline:
                                             self.unknown_timers[fid] = time.time()
 
                             except Exception as e:
-                                print(f"[VisionPipeline] Recognition thread error: {e}")
+                                logger.exception(f"[VisionPipeline] Recognition thread error: {e}")
 
                             finally:
                                 # Always release semaphore slot and remove self

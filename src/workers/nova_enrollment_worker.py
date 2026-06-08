@@ -3,6 +3,8 @@ import queue
 import re
 import threading
 import time
+import logging
+import cv2
 from typing import Any, Optional
 
 from src.modules.nove_face_encoder import build_nova_brain
@@ -10,6 +12,8 @@ from src.modules.nova_pose_validator import PoseValidator
 from src.network.nova_network_models import BaseEvent
 from src.network.nova_server import LumosServer
 
+
+logger = logging.getLogger(__name__)
 
 class NovaEnrollmentWorker:
     """Isolated enrollment worker for head-pose guided face registration."""
@@ -79,7 +83,9 @@ class NovaEnrollmentWorker:
         self._worker_thread.join(timeout=5.0)
         # --- BUG F-3 FIX: Check for zombie encoding threads ---
         if self._worker_thread.is_alive():
-            print("[NovaEnrollmentWorker] CRITICAL WARNING: Thread still active after 5s timeout! A brain build is likely in progress.")
+            self._send_tts("Warning: Enrollment thread still active after timeout. A brain build may be in progress.", self.PRIORITY_WARNING)
+            logger.critical("[NovaEnrollmentWorker] CRITICAL WARNING: Thread still active after 5s timeout! A brain build is likely in progress.")
+            
         # ------------------------------------------------------
         self.validator.close()
 
@@ -110,6 +116,7 @@ class NovaEnrollmentWorker:
 
             if self.active:
                 self._send_tts("Enrollment already in progress. Please wait.", self.PRIORITY_WARNING)
+                logger.warning("Received enrollment command while session is active. Ignoring command: %s", target_name)
                 self._command_queue.task_done()
                 continue
 
@@ -126,6 +133,7 @@ class NovaEnrollmentWorker:
         self.last_warning_time = 0.0
         self.validator.reset()
         self._send_tts(f"Starting enrollment for {self.target_name}.", self.PRIORITY_SYSTEM)
+        logger.info(f"[NovaEnrollmentWorker] Starting enrollment for {self.target_name}.")
 
     def _process_frame(self, frame: Any) -> None:
         if not self.active or self.target_name is None:
@@ -134,6 +142,7 @@ class NovaEnrollmentWorker:
         instruction, step_name = self.STEPS[self.step_index]
 
         if not self.step_started:
+            logger.info(f"[NovaEnrollmentWorker] Processing frame for enrollment step: {step_name}")
             self._send_tts(instruction, self.PRIORITY_SYSTEM)
             self.step_start_time = time.time()
             self.step_started = True
@@ -151,6 +160,7 @@ class NovaEnrollmentWorker:
         if is_valid:
             self._save_frame(frame, step_name)
             self._send_tts("Pose looks good!", self.PRIORITY_FEEDBACK)
+            logger.debug(f"Pose validated for step '{step_name}' after {elapsed:.1f} seconds.")
             self.step_saved = True
             self.step_index += 1
             self.validator.reset()
@@ -170,13 +180,15 @@ class NovaEnrollmentWorker:
         self.active = False
         self._send_tts(f"Enrollment for {self.target_name} complete.", self.PRIORITY_FEEDBACK)
         self._send_tts("Building enrollment database.", self.PRIORITY_INFO)
+        logger.info(f"[NovaEnrollmentWorker] Building enrollment database for {self.target_name}.")
 
         try:
             build_nova_brain(self.target_name)
             self._send_tts("Enrollment database updated.", self.PRIORITY_INFO)
             self._send_event("BRAIN_RELOAD_REQUEST", {"name": self.target_name})
+            logger.info(f"[NovaEnrollmentWorker] Enrollment database updated for {self.target_name}.")
         except Exception as exc:
-            print(f"[NovaEnrollmentWorker] Brain build failed: {exc}")
+            logger.exception(f"[NovaEnrollmentWorker] Brain build failed: {exc}")
             self._send_tts("Enrollment failed.", self.PRIORITY_SYSTEM)
         finally:
             temp_name = self.target_name  # Store before clearing
@@ -190,10 +202,13 @@ class NovaEnrollmentWorker:
         filename = f"{safe_name}_{step_name}.jpg"
         path = os.path.join(self.DB_FOLDER, filename)
         try:
-            import cv2
             cv2.imwrite(path, frame)
         except Exception as exc:
-            print(f"[NovaEnrollmentWorker] Failed to save enrollment frame: {exc}")
+            # ── PATCH: Log silently instead of print ──────────
+            self._send_tts("Sorry, I had trouble saving the enrollment image. This step will be retried.", self.PRIORITY_WARNING)
+            logger.error(f"Failed to save enrollment frame to {path}: {exc}")
+            # No user-facing alert needed here; failure is logged
+            # ──────────────────────────────────────────────────
 
     def _send_tts(self, text: str, priority: int) -> None:
         event = BaseEvent.create("TTS_AUDIO", {"text": text}, priority=priority)

@@ -43,6 +43,7 @@ class NovaAIWorker:
             logger.debug("Enqueued AI command: %s", command)
             return True
         except queue.Full:
+            self._send_warning("Sorry, I'm a bit busy right now. Please try again in a moment.")
             logger.warning("AI worker queue is full. Dropping command: %s", command)
             return False
 
@@ -74,6 +75,7 @@ class NovaAIWorker:
         elif intent == INTENT_TEXT:
             self._handle_text_request(command)
         else:
+            self._send_warning("Sorry, I don't understand that command.")
             logger.warning("Unsupported AI intent received: %s", intent)
 
     def _handle_scene_request(self, command: Dict[str, Any]) -> None:
@@ -84,6 +86,17 @@ class NovaAIWorker:
 
         try:
             description = describe_scene()
+
+            # ── PATCH: Save image to RAM disk for Flutter to fetch ──
+            try:
+                import shutil
+                shutil.copy(str(image_path), str(RAM_DISK_SCENE_PATH))
+                logger.info(f"Scene image persisted to {RAM_DISK_SCENE_PATH}")
+            except Exception as img_err:
+                self._send_warning("Sorry, I had trouble preparing the scene image. The description will still be sent, but the image may not be available.")
+                logger.warning(f"Failed to persist scene to RAM disk: {img_err}")
+            # ──────────────────────────────────────────────────────────
+
             event = BaseEvent.create(
                 "SCENE_DESCRIPTION",
                 {"text": description, "intent": INTENT_SCENE},

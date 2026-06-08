@@ -50,6 +50,15 @@ class NovaYoloWorker:
             logger.info("Loaded YOLO model from %s", self._model_path)
             return model
         except Exception as exc:
+            error_payload = {
+                "label": "model_load_error",
+                "message": f"Failed to load object detection model. Hazard detection is unavailable.",
+            }
+            self._send_event(
+                "OBJECT_DETECTION",
+                error_payload,
+                VoiceQueue.PRIORITY_WARNING,
+            )
             logger.warning("Failed to load YOLO model from %s: %s", self._model_path, exc)
             return None
 
@@ -59,6 +68,15 @@ class NovaYoloWorker:
             self._frame_queue.put_nowait((time.time(), frame))
             return True
         except queue.Full:
+            error_payload = {
+                "label": "queue_full",
+                "message": "YOLO worker queue is full. Dropping frame to preserve throughput.",
+            }
+            self._send_event(
+                "OBJECT_DETECTION",
+                error_payload,
+                VoiceQueue.PRIORITY_WARNING,
+            )
             logger.warning("YOLO worker queue is full. Dropping frame to preserve throughput.")
             return False
 
@@ -107,6 +125,18 @@ class NovaYoloWorker:
             results = list(self._model.predict(frame, conf=config.detection_confidence, stream=True, verbose=False))
         except Exception as exc:
             logger.warning("YOLO inference failed: %s", exc)
+            logger.debug("Failed to run YOLO inference.")
+            # ── PATCH: Alert user to inference failure ────────────────
+            error_payload = {
+                "label": "system_error",
+                "message": "Object detection error. Retrying...",
+            }
+            self._send_event(
+                "OBJECT_DETECTION",
+                error_payload,
+                VoiceQueue.PRIORITY_WARNING,
+            )
+            # ──────────────────────────────────────────────────────────
             return
 
         self._process_results(frame, results, config, now)
@@ -147,6 +177,7 @@ class NovaYoloWorker:
                         payload,
                         VoiceQueue.PRIORITY_CRITICAL,
                     )
+                    logger.debug(f"Emergency alert for {label} at distance {distance:.1f}m (center_x={center_x:.1f}, in_path={in_path})")
                     break
 
                 if label in config.trip_hazards and distance < config.hazard_distance and in_path:
@@ -161,6 +192,7 @@ class NovaYoloWorker:
                             payload,
                             VoiceQueue.PRIORITY_WARNING,
                         )
+                        logger.debug(f"Safety alert for {label} at distance {distance:.1f}m (center_x={center_x:.1f}, in_path={in_path})")
                         self._last_safety_alert = label
                         self._last_alert_time = now
 
@@ -179,6 +211,7 @@ class NovaYoloWorker:
                     payload,
                     VoiceQueue.PRIORITY_INFO,
                 )
+                logger.debug(f"Crowd alert for {person_count_center} people at distance {distance:.1f}m")
                 self._last_alert_time = now
 
     def _get_label(self, box: Any) -> str:
