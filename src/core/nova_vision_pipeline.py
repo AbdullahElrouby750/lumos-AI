@@ -328,13 +328,13 @@ class VisionPipeline:
                     has_result  = face_id in self.recognition_results
                     has_thread  = face_id in self.recognition_threads
 
-                can_spawn = (
-                    not self.is_paused
-                    and is_stable
-                    and not has_result
-                    and not has_thread
-                    and self._thread_semaphore.acquire(blocking=False)  # non-blocking
-                )
+                    can_spawn = (
+                        not self.is_paused
+                        and is_stable
+                        and not has_result
+                        and not has_thread
+                        and self._thread_semaphore.acquire(blocking=False)  # non-blocking
+                    )
 
                 if can_spawn:
                     # Capture loop variable safely

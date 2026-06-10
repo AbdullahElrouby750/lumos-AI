@@ -47,7 +47,7 @@ def main():
         return
 
     try:
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture("http://10.42.0.238:8888/stream.mjpg")        
         # --- BUG A-3 FIX (Part 1): Hardware Request ---
         cap.set(cv2.CAP_PROP_FPS, 30)
         if not cap.isOpened():
