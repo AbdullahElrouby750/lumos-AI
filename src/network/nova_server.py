@@ -2,12 +2,11 @@
 Lumos Nervous System - FastAPI Server Core
 
 Unified asynchronous FastAPI server handling WebSocket signaling and RESTful file serving.
-Runs on port 5000 with Uvicorn, optimized for Raspberry Pi 4 hardware constraints.
+Runs on port 8000 with Uvicorn, optimized for Raspberry Pi 4 hardware constraints.
 """
 
 import asyncio
 import logging
-import os
 import threading
 import time
 from pathlib import Path
@@ -20,15 +19,22 @@ from fastapi.responses import FileResponse
 from src.network.nova_discovery import LumosDiscovery
 from src.network.nova_network_models import BaseEvent, Event
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 # Hardware-aware paths (Pi 4 optimized)
-# --- BUG X-1 FIX: Point server to the project root ---
-BRAIN_FILE_PATH = Path("nova_brain.pkl") 
-# -----------------------------------------------------
-SCENE_DIR_PATH = Path("/dev/shm")  # RAM disk for transient images
+BRAIN_FILE_PATH   = Path("nova_brain.pkl")
+SCENE_DIR_PATH    = Path("/dev/shm")        # RAM disk for transient images
 LATEST_SCENE_FILE = SCENE_DIR_PATH / "latest_scene.jpg"
+
+# Lazy import to avoid circular dependency — only used for state check in WebSocket
+def _get_lumos_state() -> str:
+    """Read current Pi4 orchestrator state. Returns 'UNKNOWN' if not available."""
+    try:
+        import json
+        with open("/var/lib/lumos/state.json", "r") as f:
+            return json.load(f).get("state", "UNKNOWN")
+    except Exception:
+        return "UNKNOWN"
 
 
 class LumosServer:
@@ -40,7 +46,6 @@ class LumosServer:
     """
 
     def __init__(self):
-        """Initialize the FastAPI server with WebSocket and REST endpoints."""
         self.app = FastAPI(title="Lumos Nervous System", version="3.1")
         self.event_queue: asyncio.Queue[Event] = asyncio.Queue()
         self.active_connections: List[WebSocket] = []
@@ -50,7 +55,6 @@ class LumosServer:
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.command_callback: Optional[Callable[[dict[str, Any]], None]] = None
 
-        # Setup routes
         self._setup_routes()
 
     def _setup_routes(self) -> None:
@@ -58,13 +62,26 @@ class LumosServer:
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket) -> None:
-            """WebSocket endpoint for real-time event multiplexing."""
+            """
+            WebSocket endpoint for real-time event multiplexing.
+            Only accepts connections when Pi4 orchestrator state is HOME.
+            """
+            # State check — reject if not ready
+            state = _get_lumos_state()
+            if state != "HOME":
+                await websocket.close(
+                    code=1013,
+                    reason=f"Not ready: Pi4 state is {state}"
+                )
+                logger.warning(f"WebSocket rejected — Pi4 state is {state}")
+                return
+
             await websocket.accept()
             self.active_connections.append(websocket)
-            logger.info(f"WebSocket connection established. Total connections: {len(self.active_connections)}")
+            logger.info(f"WebSocket connected. Total: {len(self.active_connections)}")
 
             try:
-                send_task = asyncio.create_task(self._send_loop(websocket))
+                send_task    = asyncio.create_task(self._send_loop(websocket))
                 receive_task = asyncio.create_task(self._receive_loop(websocket))
 
                 done, pending = await asyncio.wait(
@@ -76,7 +93,7 @@ class LumosServer:
                     task.cancel()
 
                 for task in done:
-                    if task.exception():
+                    if not task.cancelled() and task.exception():
                         raise task.exception()
 
             except WebSocketDisconnect:
@@ -86,13 +103,13 @@ class LumosServer:
             finally:
                 if websocket in self.active_connections:
                     self.active_connections.remove(websocket)
+                logger.info(f"WebSocket cleaned up. Remaining: {len(self.active_connections)}")
 
         @self.app.get("/api/v1/brain")
         async def get_brain_file() -> FileResponse:
             """Serve the nova_brain.pkl file from the local database."""
             if not BRAIN_FILE_PATH.exists():
                 raise HTTPException(status_code=404, detail="Brain file not found")
-
             return FileResponse(
                 path=BRAIN_FILE_PATH,
                 media_type="application/octet-stream",
@@ -104,7 +121,6 @@ class LumosServer:
             """Serve the latest high-resolution scene capture from RAM disk."""
             if not LATEST_SCENE_FILE.exists():
                 raise HTTPException(status_code=404, detail="Latest scene not available")
-
             return FileResponse(
                 path=LATEST_SCENE_FILE,
                 media_type="image/jpeg",
@@ -126,7 +142,6 @@ class LumosServer:
             except Exception:
                 disconnected.append(websocket)
 
-        # Clean up disconnected clients
         for ws in disconnected:
             if ws in self.active_connections:
                 self.active_connections.remove(ws)
@@ -138,7 +153,8 @@ class LumosServer:
                 event = await asyncio.wait_for(self.event_queue.get(), timeout=15.0)
                 await self._broadcast_event(event)
             except asyncio.TimeoutError:
-                await websocket.send_text("ping")
+                # Keep-alive ping every 15 seconds
+                await websocket.send_text('{"type":"ping"}')
 
     async def _receive_loop(self, websocket: WebSocket) -> None:
         """Continuously receive incoming JSON commands from the connected client."""
@@ -160,23 +176,18 @@ class LumosServer:
         """Run the FastAPI server with Uvicorn."""
         self.loop = asyncio.get_running_loop()
         try:
-            # Start mDNS discovery
             await self.discovery.start_discovery()
 
-            # Configure Uvicorn for Pi 4 optimization
             config = uvicorn.Config(
                 app=self.app,
                 host="0.0.0.0",
-                port=5000,
+                port=8000,          # FIXED: was 5000
                 log_level="info",
-                # Pi 4 optimizations
-                workers=1,  # Single worker to avoid memory pressure
+                workers=1,          # Single worker to avoid memory pressure on Pi4
                 loop="asyncio",
             )
 
             server = uvicorn.Server(config)
-
-            # Run server until shutdown
             await server.serve()
 
         except Exception as e:
@@ -196,7 +207,7 @@ class LumosServer:
             daemon=True
         )
         self._server_thread.start()
-        logger.info("Lumos server started in background thread")
+        logger.info("Lumos server started in background thread on port 8000")
 
     def _run_in_thread(self) -> None:
         """Run the async server in the thread's event loop."""
@@ -219,5 +230,4 @@ class LumosServer:
                     self.loop
                 )
             except RuntimeError:
-                # If loop is closed or other error
                 pass

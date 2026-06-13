@@ -8,10 +8,10 @@ Allows Flutter clients to discover the device on the local network without hardc
 import asyncio
 import logging
 import socket
+import subprocess
 from typing import Optional
 from zeroconf import ServiceInfo, Zeroconf
 
-# Configure logging for discovery operations
 logger = logging.getLogger(__name__)
 
 
@@ -25,11 +25,10 @@ class LumosDiscovery:
 
     SERVICE_TYPE = "_lumos._tcp.local."
     SERVICE_NAME = "Lumos Server"
-    HOSTNAME = "lumos.local"
-    PORT = 5000
+    HOSTNAME     = "pi-four.local"   # FIXED: was "lumos.local"
+    PORT         = 8000              # FIXED: was 5000
 
     def __init__(self):
-        """Initialize the Zeroconf service responder."""
         self.zeroconf: Optional[Zeroconf] = None
         self.service_info: Optional[ServiceInfo] = None
         self._running = False
@@ -46,15 +45,12 @@ class LumosDiscovery:
             return
 
         try:
-            # Get local IP address (first non-loopback interface)
             local_ip = self._get_local_ip()
             if not local_ip:
                 raise RuntimeError("Could not determine local IP address")
 
-            # Create Zeroconf instance
             self.zeroconf = Zeroconf()
 
-            # Create service info
             self.service_info = ServiceInfo(
                 type_=self.SERVICE_TYPE,
                 name=f"{self.SERVICE_NAME}.{self.SERVICE_TYPE}",
@@ -66,7 +62,6 @@ class LumosDiscovery:
                 },
             )
 
-            # Register service asynchronously
             await asyncio.get_event_loop().run_in_executor(
                 None, self.zeroconf.register_service, self.service_info
             )
@@ -80,9 +75,7 @@ class LumosDiscovery:
             raise
 
     async def stop_discovery(self) -> None:
-        """
-        Stop the mDNS service registration and clean up resources.
-        """
+        """Stop the mDNS service registration and clean up resources."""
         if not self._running:
             return
 
@@ -105,20 +98,27 @@ class LumosDiscovery:
 
     def _get_local_ip(self) -> Optional[str]:
         """
-        Get the local IP address of the device.
-
-        Returns the IP of the first non-loopback network interface.
+        Get the local IP address of wlan0 (phone hotspot interface).
+        Falls back to hostname resolution if wlan0 is not up yet.
         """
+        # FIXED: don't connect to 8.8.8.8 — no internet on phone hotspot.
+        # Instead read wlan0 IP directly from the system.
         try:
-            # Create a socket to determine local IP
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))  # Connect to Google DNS
-            local_ip = s.getsockname()[0]
-            s.close()
-            return local_ip
+            result = subprocess.run(
+                ["ip", "-4", "addr", "show", "wlan0"],
+                capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("inet "):
+                    ip = line.split()[1].split("/")[0]
+                    if not ip.startswith("127."):
+                        return ip
         except Exception:
-            # Fallback: try to get IP from hostname
-            try:
-                return socket.gethostbyname(socket.gethostname())
-            except Exception:
-                return None
+            pass
+
+        # Fallback: hostname resolution
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return None
